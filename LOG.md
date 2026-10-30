@@ -5,6 +5,46 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 2: estrutura do bot (IA + Telegram), pronta para receber as chaves
+
+- **O que foi feito (branch `feat/fase2-bot`):**
+  - **Banco** (migration `20261030000600_fase2_bot.sql`): tabelas `canal_operadores`, `vinculos_canal`, `mensagens`, `conversas` e `midias_pendentes`. RLS ligado e sem acesso para anon/authenticated: só a API lê e escreve.
+  - **Canal Telegram** (`channels/telegram/`):
+    - recebe texto, foto (inclusive como arquivo), álbum e áudio, só em conversa privada;
+    - polling em desenvolvimento e webhook (com segredo) em produção;
+    - a interface `ChannelAdapter` deixa o WhatsApp como mais um adapter.
+  - **Pipeline** (`inbound/`):
+    - grava a mensagem e descarta reenvios;
+    - fila em ordem por remetente;
+    - vínculo por código (`/start CODIGO` ou o código digitado);
+    - fotos vão para o buffer e são anexadas ao próximo produto (janela de 3 minutos);
+    - aviso "Recebi N fotos" quando não chega comando;
+    - legenda de álbum espera as outras fotos;
+    - limite diário de mensagens por loja;
+    - limpeza de hora em hora das fotos não usadas (24h) e dos códigos vencidos;
+    - toda mensagem recebe resposta, inclusive em erro.
+  - **IA** (`ai/`):
+    - roteador Gemini ⇄ Groq: fallback, round-robin e pausa de 5 minutos após 3 falhas;
+    - transcrição com Groq Whisper e o Gemini como reserva;
+    - agente com instruções em português e 8 tools (criar, editar, adicionar fotos, pausar, reativar, excluir, buscar, resumo) sobre os mesmos serviços do painel;
+    - contexto curto (último produto e últimas mensagens);
+    - rastreio de provedor, modelo, tokens e fallback em `mensagens`.
+  - **Painel:** em "Loja", seção "Bot do Telegram" para conectar a conta (link ou código), ver as contas conectadas e remover acesso.
+  - **Testes:**
+    - `teste:bot`: 19 verificações ponta a ponta, sem chaves, com canal falso e IA simulada contra o banco real;
+    - `bot:frases`: compara Gemini e Groq nas 16 frases de `test/frases.json`;
+    - `teste:integracao` ganhou 4 verificações do bot (30 no total).
+- **Por quê:** deixar a Fase 2 pronta para funcionar assim que as chaves forem configuradas, reaproveitando as regras de negócio do painel.
+- **Decisões:**
+  - **Fila em memória** em vez de pg-boss por enquanto. O pg-boss exigiria a senha direta do Postgres, e uma instância basta no MVP. Como as mensagens ficam gravadas antes de entrar na fila, a troca depois não muda o resto.
+  - **Bot API direta** em vez da biblioteca grammY. Só 6 métodos são usados.
+  - **Polling em desenvolvimento:** dá para testar no Telegram sem expor a máquina na internet.
+  - **Sem retentativa depois de uma ação:** se a IA falhar depois de já criar ou alterar algo, o bot avisa o que foi feito em vez de tentar no outro provedor, o que duplicaria o produto.
+  - Excluir exige o código do produto. As ações em lote continuam fora do bot até a Fase 3.
+  - Modelos padrão: `gemini-2.5-flash` e `openai/gpt-oss-120b` (Groq), configuráveis no `.env`.
+- **Não testado ainda:** o Telegram real e os provedores de IA reais. Faltam o token do bot e as chaves.
+- **Pendências:** receber as chaves, rodar `bot:frases` nos dois provedores e testar no Telegram. O Supabase Advisors sugere ligar a proteção contra senhas vazadas, uma configuração do painel do Supabase.
+
 ## 2026-10-30: Fase 1 concluída e pendências organizadas
 
 - **O que foi feito:** vitrine aprovada e branch `feat/vitrine` juntada na `main`. As pendências espalhadas pelo log foram reunidas no `direcao.md` (seção 11) em duas listas: "Antes de ter clientes reais" e "Melhorias pós-MVP".

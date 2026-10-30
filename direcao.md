@@ -38,10 +38,10 @@ Para que essa troca seja barata, **o núcleo do sistema não conhece o canal**. 
    ├── WhatsApp (pós-validação) ──────┤  Webhook (texto, áudio, foto)
    │                                  ▼
    │                    [ Channel Adapters ]
-   │                    telegram/ (grammY)  |  whatsapp/ (Evolution API)
+   │                    telegram/ (Bot API) |  whatsapp/ (Evolution API)
    │                                  │  InboundMessage normalizada
    │                                  ▼
-   │                    [ Fila de Jobs: pg-boss (Postgres) ]
+   │                    [ Fila por remetente (memória; pg-boss ao escalar) ]
    │                    processamento em ordem por remetente
    │                                  │
    │                                  ▼
@@ -72,8 +72,8 @@ Para que essa troca seja barata, **o núcleo do sistema não conhece o canal**. 
 |---|---|---|
 | Runtime | Node.js 20+, TypeScript (strict) | |
 | Backend | **Fastify** | Tipagem melhor, validação por schema, logger (pino) embutido |
-| Fila | **pg-boss** | Roda sobre o próprio Postgres do Supabase, sem Redis extra |
-| Bot Telegram | **grammY** | Biblioteca TS-first, suporta webhook |
+| Fila | **Fila em memória por remetente** (MVP) → **pg-boss** ao escalar | Uma instância basta no início; as mensagens já ficam gravadas em `mensagens`. O pg-boss roda no próprio Postgres, sem Redis, mas exige a conexão direta do banco |
+| Bot Telegram | **Bot API direta** (`fetch`) | Só 6 métodos usados; sem dependência extra. Polling em dev (sem URL pública), webhook em produção |
 | Gateway WhatsApp (depois) | Evolution API | Ver riscos na seção 12 |
 | Imagens | `sharp` | Processamento em memória antes do upload |
 | Storage | Driver por `STORAGE_DRIVER`: `supabase` (Supabase Storage, dev) ou `s3` (MinIO via `@aws-sdk/client-s3`, `forcePathStyle: true`) | Isolado atrás da interface `StorageDriver`; trocar é só mudar o `.env` |
@@ -131,6 +131,14 @@ Convenções: toda tabela tem `criado_em timestamptz default now()`. As tabelas 
 - unique (`canal`, `identificador_externo`)
 
 > Permite vários operadores por loja (ex.: dono e funcionária) e o mesmo lojista em dois canais.
+
+### `vinculos_canal` (códigos de vínculo)
+
+- `codigo`: text (PK, 8 caracteres)
+- `loja_id`, `canal`, `criado_por` (usuário do painel)
+- `expira_em` (30 minutos) e `usado_em` (cada código vale uma vez)
+
+> O lojista gera o código no painel e envia ao bot (ou toca no link). Assim a conta do Telegram é ligada à loja sem digitar telefone ou ID.
 
 ### `produtos`
 
@@ -245,7 +253,7 @@ interface ChannelAdapter {
 
 ## 7. Regras de Negócio e Comportamento da IA
 
-1. **Resposta imediata e processamento em fila:** o webhook valida a assinatura, grava a mensagem (descartando duplicatas pelo `id_externo`), enfileira um job no pg-boss e responde HTTP 200. Os jobs de um mesmo remetente são **processados em ordem**, porque foto, foto e depois áudio precisam ser tratados na sequência.
+1. **Resposta imediata e processamento em fila:** o webhook valida a assinatura, grava a mensagem (descartando duplicatas pelo `id_externo`), enfileira o processamento e responde HTTP 200. Os jobs de um mesmo remetente são **processados em ordem**, porque foto, foto e depois áudio precisam ser tratados na sequência.
 2. **Identificação do operador:** todo job resolve o `canal_operadores` pelo (`canal`, `remetente`). Se o remetente não estiver cadastrado, o sistema responde amigavelmente que o número ou conta não está vinculado a nenhuma loja e não executa nada.
 3. **Buffer de fotos:** o lojista pode enviar de 1 a 5 fotos antes da legenda ou do áudio. Cada foto é convertida e salva em `midias_pendentes`. O próximo comando de cadastro **consome as mídias pendentes dos últimos 3 minutos** do mesmo operador. Se não chegar nenhum comando nesse tempo, o bot pergunta: _"Recebi 3 fotos. Quer cadastrar um produto com elas?"_. As mídias não consumidas são limpas após 24h.
 4. **Conversão obrigatória de imagem:** nenhuma imagem é salva no formato original. Toda imagem passa pelo `sharp` (largura máxima 1200px, `.webp`, qualidade 80), venha do bot ou do painel.
@@ -327,10 +335,9 @@ apps/
 │   ├── modules/
 │   │   ├── channels/
 │   │   │   ├── types.ts      # InboundMessage, ChannelAdapter
-│   │   │   ├── telegram/     # Adapter Telegram (grammY)
+│   │   │   ├── telegram/     # Adapter Telegram (Bot API: polling ou webhook)
 │   │   │   └── whatsapp/     # Adapter Evolution API (fase pós-validação)
-│   │   ├── inbound/          # Webhook → idempotência → fila → pipeline
-│   │   ├── jobs/             # Workers pg-boss e limpezas agendadas
+│   │   ├── inbound/          # Idempotência → fila por remetente → pipeline, vínculo, fotos pendentes, limpeza
 │   │   ├── ai/
 │   │   │   ├── agent.ts      # Orquestração LLM + tool calling
 │   │   │   ├── providers.ts  # Roteador Gemini ⇄ Groq (fallback, round-robin, pausa)
@@ -423,12 +430,13 @@ O sistema precisa funcionar **por completo pelo painel** antes de ter IA ou bot.
 
 Só começa com a Fase 1 funcionando. O bot passa a **chamar os serviços que já existem**, sem criar regras novas.
 
-- Contas e chaves: Gemini (Google AI Studio), Groq e bot do Telegram (@BotFather).
-- Roteador de provedores de IA (Gemini ⇄ Groq) e conjunto de frases de teste.
-- Receber foto, texto e áudio pelo Telegram, com fila, idempotência e identificação do operador.
-- Buffer de fotos, transcrição de áudio e extração dos dados via IA.
-- Tools diretas: criar, editar, adicionar fotos, pausar/reativar, excluir e buscar, sobre os mesmos serviços usados pelo painel.
-- Vincular operadores do Telegram pelo painel.
+- [ ] Contas e chaves: Gemini (Google AI Studio), Groq e bot do Telegram (@BotFather).
+- [x] Roteador de provedores de IA (Gemini ⇄ Groq) e conjunto de frases de teste (`pnpm --filter @catalogo/api bot:frases`).
+- [x] Receber foto, texto e áudio pelo Telegram, com fila, idempotência e identificação do operador.
+- [x] Buffer de fotos, transcrição de áudio e extração dos dados via IA.
+- [x] Tools diretas: criar, editar, adicionar fotos, pausar/reativar, excluir e buscar, sobre os mesmos serviços usados pelo painel.
+- [x] Vincular operadores do Telegram pelo painel (código de uso único ou link `t.me/<bot>?start=<código>`).
+- [ ] Rodar as frases de teste com as chaves reais e testar no Telegram de verdade.
 
 ### Fase 3: Ações em Lote
 
@@ -499,7 +507,7 @@ PUBLIC_WEB_URL=https://vitrine.seudominio.com
 SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_...          # só na API, nunca no front
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_... # usada pelo app web
-DATABASE_URL=postgresql://...        # conexão direta usada pelo pg-boss
+# DATABASE_URL=postgresql://...      # só quando trocar a fila em memória pelo pg-boss
 
 # Storage (MinIO na VPS)
 S3_ENDPOINT=https://s3.seudominio.com
@@ -509,8 +517,9 @@ S3_BUCKET=catalogo-produtos
 S3_PUBLIC_URL=https://s3.seudominio.com/catalogo-produtos
 
 # Canais
-CHANNELS_ENABLED=telegram            # depois: telegram,whatsapp
-TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_BOT_TOKEN=123456:ABC...     # sem token, o bot fica desligado
+TELEGRAM_MODE=polling                # polling (dev) | webhook (produção)
+PUBLIC_API_URL=https://api.seudominio.com   # usado no webhook
 TELEGRAM_WEBHOOK_SECRET=gere_um_valor_aleatorio
 
 # WhatsApp (Fase 4)
@@ -521,9 +530,9 @@ TELEGRAM_WEBHOOK_SECRET=gere_um_valor_aleatorio
 # IA: provedores (ver seção 4.1)
 GOOGLE_GENERATIVE_AI_API_KEY=AIza...
 GROQ_API_KEY=gsk_...
-AI_GEMINI_MODEL=nome-do-modelo-gemini-flash   # conferir o nome atual no Google AI Studio
-AI_GROQ_MODEL=nome-do-modelo-groq             # escolher um com bom suporte a tool calling
-AI_GROQ_TRANSCRIPTION_MODEL=whisper-large-v3
+AI_GEMINI_MODEL=gemini-2.5-flash              # conferir o nome atual no Google AI Studio
+AI_GROQ_MODEL=openai/gpt-oss-120b             # bom suporte a tool calling
+AI_GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
 AI_PRIMARY_PROVIDER=gemini                    # gemini | groq
 AI_ROUTING_MODE=fallback                      # fallback | round-robin
 AI_DAILY_MESSAGE_LIMIT_PER_STORE=300

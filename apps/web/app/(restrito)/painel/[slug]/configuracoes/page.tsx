@@ -6,6 +6,7 @@ import { ApiErro, api, mensagemDeErro } from "@/lib/api";
 import { formatarTelefone } from "@/lib/formato";
 import type { LojaResumo } from "@/lib/tipos";
 import { useLoja } from "@/components/loja-contexto";
+import { BotTelegram } from "@/components/bot-telegram";
 import { Aviso, Botao, Campo, Cartao, Entrada } from "@/components/ui";
 
 export default function PaginaConfiguracoes() {
@@ -106,6 +107,8 @@ export default function PaginaConfiguracoes() {
           </Botao>
         </Cartao>
       </form>
+
+      <BotTelegram lojaId={loja.id} />
     </div>
   );
 }

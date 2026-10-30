@@ -18,6 +18,9 @@ import {
   removerImagem,
   reordenarImagens,
 } from '../catalog/imagens.service.js';
+import { iaConfigurada } from '../ai/providers.js';
+import { canalAtivo } from '../inbound/index.js';
+import { criarCodigoVinculo, listarOperadores, removerOperador } from '../inbound/estado.js';
 
 const uuid = z.uuid();
 const filtroSchema = z.object({
@@ -94,6 +97,25 @@ export async function rotasPainel(app: FastifyInstance) {
 
     loja.delete('/painel/lojas/:lojaId/imagens/:imagemId', async (req, reply) => {
       await removerImagem(lojaIdDe(req.params), id(req.params, 'imagemId'));
+      return reply.status(204).send();
+    });
+
+    // Bot do Telegram: quem pode operar a loja por mensagem.
+    loja.get('/painel/lojas/:lojaId/bot', async (req) => ({
+      telegram_ativo: canalAtivo('telegram') !== null,
+      ia_configurada: iaConfigurada(),
+      operadores: await listarOperadores(lojaIdDe(req.params)),
+    }));
+
+    loja.post('/painel/lojas/:lojaId/bot/vinculos', async (req, reply) => {
+      const telegram = canalAtivo('telegram');
+      if (!telegram) throw new HttpErro(409, 'O bot do Telegram ainda não está configurado no servidor');
+      const vinculo = await criarCodigoVinculo(lojaIdDe(req.params), 'telegram', req.usuario!.id);
+      return reply.status(201).send({ ...vinculo, link: await telegram.linkDeVinculo(vinculo.codigo) });
+    });
+
+    loja.delete('/painel/lojas/:lojaId/bot/operadores/:operadorId', async (req, reply) => {
+      await removerOperador(lojaIdDe(req.params), id(req.params, 'operadorId'));
       return reply.status(204).send();
     });
   });

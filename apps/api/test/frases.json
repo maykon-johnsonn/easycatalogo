@@ -1,0 +1,75 @@
+[
+  {
+    "frase": "Blusa canelada 59,90 tamanhos P M G cor preta",
+    "fotos_pendentes": 2,
+    "esperado": { "tool": "criar_produto", "args": { "preco": 59.9, "tamanhos": ["P", "M", "G"], "cores": ["Preta"] } }
+  },
+  {
+    "frase": "vestido longo floral de 189 por 149, tamanho único",
+    "fotos_pendentes": 3,
+    "esperado": { "tool": "criar_produto", "args": { "preco": 189, "preco_promocional": 149 } }
+  },
+  {
+    "frase": "brinco de pérola banhado a ouro, 39 e 90",
+    "fotos_pendentes": 1,
+    "esperado": { "tool": "criar_produto", "args": { "preco": 39.9 } }
+  },
+  {
+    "frase": "calça jeans wide leg cento e vinte e nove reais tamanhos 36 38 40",
+    "fotos_pendentes": 2,
+    "esperado": { "tool": "criar_produto", "args": { "preco": 129, "tamanhos": ["36", "38", "40"] } }
+  },
+  {
+    "frase": "muda o preço da 12 pra 49,90",
+    "esperado": { "tool": "editar_produto", "args": { "numero": 12, "preco": 49.9 } }
+  },
+  {
+    "frase": "coloca a #7 em promoção por 79",
+    "esperado": { "tool": "editar_produto", "args": { "numero": 7, "preco_promocional": 79 } }
+  },
+  {
+    "frase": "tira a promoção da 7",
+    "esperado": { "tool": "editar_produto", "args": { "numero": 7, "remover_promocao": true } }
+  },
+  {
+    "frase": "acabou a #3, pausa ela",
+    "esperado": { "tool": "pausar_produto", "args": { "numero": 3 } }
+  },
+  {
+    "frase": "chegou mais da 3, volta ela pra vitrine",
+    "esperado": { "tool": "reativar_produto", "args": { "numero": 3 } }
+  },
+  {
+    "frase": "apaga o produto 15",
+    "esperado": { "tool": "excluir_produto", "args": { "numero": 15 } }
+  },
+  {
+    "frase": "adiciona essas fotos na 4",
+    "fotos_pendentes": 2,
+    "esperado": { "tool": "adicionar_fotos", "args": { "numero": 4 } }
+  },
+  {
+    "frase": "quais vestidos eu tenho?",
+    "esperado": { "tool": "buscar_produtos" }
+  },
+  {
+    "frase": "quantos produtos tem na loja?",
+    "esperado": { "tool": "resumo_loja" }
+  },
+  {
+    "frase": "pausa a blusa azul",
+    "observacao": "sem código: precisa buscar antes, nunca pausar direto",
+    "esperado": { "tool": "buscar_produtos" }
+  },
+  {
+    "frase": "bolsa de couro caramelo, tenho em preto também",
+    "fotos_pendentes": 2,
+    "observacao": "sem preço: deve perguntar, não cadastrar",
+    "esperado": { "nenhuma_alteracao": true }
+  },
+  {
+    "frase": "20% de desconto em todas as calças",
+    "observacao": "ação em lote: ainda não disponível pelo bot",
+    "esperado": { "nenhuma_alteracao": true }
+  }
+]

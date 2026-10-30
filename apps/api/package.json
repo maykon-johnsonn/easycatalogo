@@ -9,14 +9,19 @@
     "start": "node --env-file=.env dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "admin:promover": "tsx --env-file=.env scripts/promover-admin.ts",
-    "teste:integracao": "tsx --env-file=.env scripts/teste-integracao.ts"
+    "teste:integracao": "tsx --env-file=.env scripts/teste-integracao.ts",
+    "teste:bot": "tsx --env-file=.env scripts/teste-bot.ts",
+    "bot:frases": "tsx --env-file=.env scripts/frases-teste.ts"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.109",
+    "@ai-sdk/groq": "^4.0.74",
     "@aws-sdk/client-s3": "^3.1160.0",
     "@catalogo/shared": "workspace:*",
     "@fastify/cors": "^11.3.1",
     "@fastify/multipart": "^10.1.6",
     "@supabase/supabase-js": "^2.118.0",
+    "ai": "^7.0.158",
     "fastify": "^5.12.7",
     "sharp": "^0.35.5",
     "zod": "^4.6.7"

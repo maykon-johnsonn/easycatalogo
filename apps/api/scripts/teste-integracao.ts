@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.js';
 process.loadEnvFile('../web/.env.local');
 const PUBLISHABLE = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
-const app = await buildApp({ logs: false });
+const app = await buildApp({ logs: false, bot: false });
 const marca = Date.now();
 const usuarios: string[] = [];
 const lojas: string[] = [];
@@ -135,8 +135,21 @@ try {
     (await chamar(donoB.token, 'DELETE', `/painel/lojas/${lojaB}/imagens/${imagens[0]!.id}`)).status === 404);
   checar('Dono A remove foto', (await chamar(donoA.token, 'DELETE', `${base}/imagens/${imagens[0]!.id}`)).status === 204);
 
+  // --- Bot (rotas do painel; o bot fica desligado neste teste, o fluxo completo está em teste:bot)
+  const bot = await chamar(donoA.token, 'GET', `${base}/bot`);
+  checar('Status do bot no painel', bot.status === 200 && bot.json.telegram_ativo === false && Array.isArray(bot.json.operadores), bot.json);
+  checar('Gerar código com o bot desligado: 409', (await chamar(donoA.token, 'POST', `${base}/bot/vinculos`)).status === 409);
+  const { data: opB } = await supabaseAdmin
+    .from('canal_operadores')
+    .insert({ loja_id: lojaB, canal: 'telegram', identificador_externo: `teste-${marca}` })
+    .select('id')
+    .single();
+  checar('Dono A não remove operador do bot da loja B: 404',
+    (await chamar(donoA.token, 'DELETE', `${base}/bot/operadores/${opB!.id}`)).status === 404);
+  checar('Dono B remove o próprio operador do bot', (await chamar(donoB.token, 'DELETE', `/painel/lojas/${lojaB}/bot/operadores/${opB!.id}`)).status === 204);
+
   // --- Métricas e status
-  const resumo = await chamar(adm.token, 'GET', '/plataforma/resumo');
+  const resumo =await chamar(adm.token, 'GET', '/plataforma/resumo');
   checar('Resumo da plataforma', resumo.status === 200 && resumo.json.lojas.total >= 2 && resumo.json.produtos.total >= 1, resumo.json);
   const lista = await chamar(adm.token, 'GET', '/plataforma/lojas');
   const itemA = lista.json.find((l: { id: string }) => l.id === lojaA);

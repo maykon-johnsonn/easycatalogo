@@ -18,8 +18,17 @@ export async function converterParaWebp(original: Buffer): Promise<Buffer> {
 
 /** Converte e envia a imagem de um produto. A chave começa pelo loja_id para facilitar limpeza e backup por loja. */
 export async function salvarImagemProduto(lojaId: string, produtoId: string, original: Buffer): Promise<ImagemSalva> {
+  return salvar(`${lojaId}/${produtoId}`, original);
+}
+
+/** Foto recebida pelo bot antes de existir o produto. Ao ser usada, a mesma chave passa para produto_imagens. */
+export async function salvarImagemPendente(lojaId: string, original: Buffer): Promise<ImagemSalva> {
+  return salvar(`${lojaId}/bot`, original);
+}
+
+async function salvar(pasta: string, original: Buffer): Promise<ImagemSalva> {
   const webp = await converterParaWebp(original);
-  const chave = `${lojaId}/${produtoId}/${randomUUID()}.webp`;
+  const chave = `${pasta}/${randomUUID()}.webp`;
   await storage.enviar(chave, webp, 'image/webp');
   return { chave, url: storage.urlPublica(chave) };
 }

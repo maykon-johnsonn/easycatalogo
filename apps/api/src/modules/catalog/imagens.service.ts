@@ -8,16 +8,7 @@ export const MAX_IMAGENS_POR_PRODUTO = 8;
 /** Converte para WebP, envia ao storage e registra as imagens no fim da ordem atual. */
 export async function adicionarImagens(lojaId: string, produtoId: string, arquivos: Buffer[]) {
   const produto = await obterProduto(lojaId, produtoId);
-  const atuais = produto.imagens.length;
-
-  if (atuais + arquivos.length > MAX_IMAGENS_POR_PRODUTO) {
-    throw new HttpErro(
-      400,
-      `Cada produto pode ter no máximo ${MAX_IMAGENS_POR_PRODUTO} fotos (já tem ${atuais}).`,
-    );
-  }
-
-  const proximaOrdem = produto.imagens.reduce((max, i) => Math.max(max, i.ordem + 1), 0);
+  verificarLimite(produto.imagens.length, arquivos.length);
   const enviadas: ImagemSalva[] = [];
 
   try {
@@ -32,8 +23,31 @@ export async function adicionarImagens(lojaId: string, produtoId: string, arquiv
     throw err;
   }
 
+  try {
+    return await registrarImagens(lojaId, produtoId, enviadas, produto.imagens);
+  } catch (err) {
+    await excluirImagens(enviadas.map((e) => e.chave)).catch(() => {});
+    throw err;
+  }
+}
+
+/** Anexa imagens que já estão no storage (ex.: fotos recebidas pelo bot). */
+export async function anexarImagensSalvas(lojaId: string, produtoId: string, imagens: ImagemSalva[]) {
+  const produto = await obterProduto(lojaId, produtoId);
+  verificarLimite(produto.imagens.length, imagens.length);
+  return registrarImagens(lojaId, produtoId, imagens, produto.imagens);
+}
+
+function verificarLimite(atuais: number, novas: number) {
+  if (atuais + novas > MAX_IMAGENS_POR_PRODUTO) {
+    throw new HttpErro(400, `Cada produto pode ter no máximo ${MAX_IMAGENS_POR_PRODUTO} fotos (já tem ${atuais}).`);
+  }
+}
+
+async function registrarImagens(lojaId: string, produtoId: string, imagens: ImagemSalva[], atuais: { ordem: number }[]) {
+  const proximaOrdem = atuais.reduce((max, i) => Math.max(max, i.ordem + 1), 0);
   const { error } = await supabaseAdmin.from('produto_imagens').insert(
-    enviadas.map((e, i) => ({
+    imagens.map((e, i) => ({
       loja_id: lojaId,
       produto_id: produtoId,
       chave_storage: e.chave,
@@ -41,11 +55,7 @@ export async function adicionarImagens(lojaId: string, produtoId: string, arquiv
       ordem: proximaOrdem + i,
     })),
   );
-  if (error) {
-    await excluirImagens(enviadas.map((e) => e.chave)).catch(() => {});
-    throw erroDoBanco(error);
-  }
-
+  if (error) throw erroDoBanco(error);
   return obterProduto(lojaId, produtoId);
 }
 

@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      canal_operadores: {
+        Row: {
+          canal: string
+          criado_em: string
+          id: string
+          identificador_externo: string
+          loja_id: string
+          nome: string | null
+        }
+        Insert: {
+          canal: string
+          criado_em?: string
+          id?: string
+          identificador_externo: string
+          loja_id: string
+          nome?: string | null
+        }
+        Update: {
+          canal?: string
+          criado_em?: string
+          id?: string
+          identificador_externo?: string
+          loja_id?: string
+          nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canal_operadores_loja_id_fkey"
+            columns: ["loja_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversas: {
+        Row: {
+          atualizado_em: string
+          canal_operador_id: string
+          ultimo_produto_id: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          canal_operador_id: string
+          ultimo_produto_id?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          canal_operador_id?: string
+          ultimo_produto_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversas_canal_operador_id_fkey"
+            columns: ["canal_operador_id"]
+            isOneToOne: true
+            referencedRelation: "canal_operadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversas_ultimo_produto_id_fkey"
+            columns: ["ultimo_produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       loja_membros: {
         Row: {
           criado_em: string
@@ -75,6 +143,132 @@ export type Database = {
           telefone_pedidos?: string
         }
         Relationships: []
+      }
+      mensagens: {
+        Row: {
+          canal: string
+          canal_operador_id: string | null
+          conteudo: string | null
+          criado_em: string
+          direcao: string
+          erro: string | null
+          id: string
+          id_externo: string | null
+          loja_id: string | null
+          modelo_ia: string | null
+          processado_em: string | null
+          provedor_ia: string | null
+          remetente: string
+          status: string
+          tipo: string
+          tokens_entrada: number | null
+          tokens_saida: number | null
+          usou_fallback: boolean
+        }
+        Insert: {
+          canal: string
+          canal_operador_id?: string | null
+          conteudo?: string | null
+          criado_em?: string
+          direcao: string
+          erro?: string | null
+          id?: string
+          id_externo?: string | null
+          loja_id?: string | null
+          modelo_ia?: string | null
+          processado_em?: string | null
+          provedor_ia?: string | null
+          remetente: string
+          status?: string
+          tipo: string
+          tokens_entrada?: number | null
+          tokens_saida?: number | null
+          usou_fallback?: boolean
+        }
+        Update: {
+          canal?: string
+          canal_operador_id?: string | null
+          conteudo?: string | null
+          criado_em?: string
+          direcao?: string
+          erro?: string | null
+          id?: string
+          id_externo?: string | null
+          loja_id?: string | null
+          modelo_ia?: string | null
+          processado_em?: string | null
+          provedor_ia?: string | null
+          remetente?: string
+          status?: string
+          tipo?: string
+          tokens_entrada?: number | null
+          tokens_saida?: number | null
+          usou_fallback?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mensagens_canal_operador_id_fkey"
+            columns: ["canal_operador_id"]
+            isOneToOne: false
+            referencedRelation: "canal_operadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mensagens_loja_id_fkey"
+            columns: ["loja_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      midias_pendentes: {
+        Row: {
+          canal_operador_id: string
+          chave_storage: string
+          consumida_em: string | null
+          grupo_externo: string | null
+          id: string
+          loja_id: string
+          recebido_em: string
+          url: string
+        }
+        Insert: {
+          canal_operador_id: string
+          chave_storage: string
+          consumida_em?: string | null
+          grupo_externo?: string | null
+          id?: string
+          loja_id: string
+          recebido_em?: string
+          url: string
+        }
+        Update: {
+          canal_operador_id?: string
+          chave_storage?: string
+          consumida_em?: string | null
+          grupo_externo?: string | null
+          id?: string
+          loja_id?: string
+          recebido_em?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "midias_pendentes_canal_operador_id_fkey"
+            columns: ["canal_operador_id"]
+            isOneToOne: false
+            referencedRelation: "canal_operadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "midias_pendentes_loja_id_fkey"
+            columns: ["loja_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plataforma_admins: {
         Row: {
@@ -181,6 +375,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "produtos_loja_id_fkey"
+            columns: ["loja_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vinculos_canal: {
+        Row: {
+          canal: string
+          codigo: string
+          criado_em: string
+          criado_por: string | null
+          expira_em: string
+          loja_id: string
+          usado_em: string | null
+        }
+        Insert: {
+          canal: string
+          codigo: string
+          criado_em?: string
+          criado_por?: string | null
+          expira_em: string
+          loja_id: string
+          usado_em?: string | null
+        }
+        Update: {
+          canal?: string
+          codigo?: string
+          criado_em?: string
+          criado_por?: string | null
+          expira_em?: string
+          loja_id?: string
+          usado_em?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vinculos_canal_loja_id_fkey"
             columns: ["loja_id"]
             isOneToOne: false
             referencedRelation: "lojas"

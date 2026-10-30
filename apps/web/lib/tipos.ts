@@ -45,3 +45,9 @@ export type LojaPlataforma = LojaResumo & {
   produtos: { total: number; ativos: number; ultima_atividade: string | null };
   url_vitrine: string;
 };
+
+export type OperadorBot = { id: string; canal: "telegram" | "whatsapp"; nome: string | null; criado_em: string };
+
+export type StatusBot = { telegram_ativo: boolean; ia_configurada: boolean; operadores: OperadorBot[] };
+
+export type CodigoVinculo = { codigo: string; expira_em: string; link: string | null };

@@ -1,6 +1,6 @@
 import type { ProdutoCriar, ProdutoEditar } from '@catalogo/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
-import { erroDoBanco, naoEncontrado } from '../../lib/erros.js';
+import { erroDoBanco, HttpErro, naoEncontrado } from '../../lib/erros.js';
 
 // Regras de negócio de produtos. Usadas pelo painel e, na Fase 2, pelas tools da IA.
 // Toda função recebe `lojaId` e filtra por ele: o cliente usa a secret key, que ignora o RLS.
@@ -52,6 +52,20 @@ export async function obterProduto(lojaId: string, produtoId: string) {
   if (error) throw erroDoBanco(error);
   if (!data) throw naoEncontrado('Produto');
   return data;
+}
+
+/** Produto pelo código curto (#12), usado pelo bot. */
+export async function obterProdutoPorNumero(lojaId: string, numero: number) {
+  const { data, error } = await supabaseAdmin
+    .from('produtos')
+    .select('id')
+    .eq('loja_id', lojaId)
+    .eq('numero', numero)
+    .is('excluido_em', null)
+    .maybeSingle();
+  if (error) throw erroDoBanco(error);
+  if (!data) throw new HttpErro(404, `Não encontrei o produto #${numero}`);
+  return obterProduto(lojaId, data.id);
 }
 
 export async function listarCategorias(lojaId: string): Promise<string[]> {

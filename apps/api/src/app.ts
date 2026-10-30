@@ -6,8 +6,9 @@ import { supabaseAdmin } from './config/supabase.js';
 import { HttpErro } from './lib/erros.js';
 import { rotasPainel } from './modules/painel/routes.js';
 import { rotasPlataforma } from './modules/plataforma/routes.js';
+import { registrarBot, type OpcoesBot } from './modules/inbound/index.js';
 
-export async function buildApp(opcoes: { logs?: boolean } = {}) {
+export async function buildApp(opcoes: { logs?: boolean; /** false desliga o bot (testes). */ bot?: false | OpcoesBot } = {}) {
   const app = Fastify({
     logger:
       opcoes.logs === false
@@ -44,6 +45,8 @@ export async function buildApp(opcoes: { logs?: boolean } = {}) {
     const { error } = await supabaseAdmin.from('lojas').select('id').limit(1);
     return { status: 'ok', banco: error ? `erro: ${error.message}` : 'ok' };
   });
+
+  if (opcoes.bot !== false) registrarBot(app, opcoes.bot);
 
   await app.register(rotasPainel);
   await app.register(rotasPlataforma);
