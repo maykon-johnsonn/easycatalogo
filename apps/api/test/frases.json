@@ -2,7 +2,7 @@
   {
     "frase": "Blusa canelada 59,90 tamanhos P M G cor preta",
     "fotos_pendentes": 2,
-    "esperado": { "tool": "criar_produto", "args": { "preco": 59.9, "tamanhos": ["P", "M", "G"], "cores": ["Preta"] } }
+    "esperado": { "tool": "criar_produto", "args": { "preco": 59.9, "tamanhos": ["P", "M", "G"], "cores": ["Preta|Preto"] } }
   },
   {
     "frase": "vestido longo floral de 189 por 149, tamanho único",

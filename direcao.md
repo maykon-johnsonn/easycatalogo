@@ -92,7 +92,8 @@ O código do agente **nunca chama um provedor diretamente**. Ele pede um modelo 
 
 - **Modo `fallback` (padrão):** usa o provedor primário (`AI_PRIMARY_PROVIDER`). Se ele responder com erro de cota (HTTP 429), timeout ou erro 5xx, a mesma requisição é refeita no outro provedor.
 - **Modo `round-robin`:** alterna os provedores a cada mensagem, para dividir o consumo das cotas. A troca por falha continua valendo.
-- **Pausa temporária:** um provedor que falhar 3 vezes seguidas fica fora por 5 minutos e todo o tráfego vai para o outro.
+- **Pausa temporária:** um provedor que falhar 3 vezes seguidas fica fora por 5 minutos e todo o tráfego vai para o outro. Se a falha for limite de uso (429), ele fica fora pelo prazo que o próprio provedor informa (até 24 h), já na primeira falha.
+- **Primário atual: Groq.** No teste de 2026-10-30, o Groq (`openai/gpt-oss-120b`) acertou 16/16 frases, com ~2 s por frase. O plano grátis do Gemini 2.5 Flash permite só **20 requisições por dia** por modelo (cerca de 10 mensagens, porque cada mensagem usa ~2 chamadas), então hoje ele serve só de reserva. Para ser primário, precisa do plano pago.
 - **Transcrição de áudio:** Groq Whisper como primário. Se falhar, o áudio é enviado ao Gemini, que também aceita áudio.
 - **Rastreio:** cada mensagem registra em `mensagens` qual provedor e modelo respondeu, os tokens usados e se houve fallback. Assim dá para comparar qualidade e custo dos dois antes de decidir onde investir.
 - **Modelos configuráveis:** os nomes dos modelos vêm do `.env` (`AI_GEMINI_MODEL`, `AI_GROQ_MODEL`). Trocar ou adicionar um provedor (ex.: OpenAI no futuro) não pode exigir mudança nas tools nem no agente.
@@ -533,7 +534,7 @@ GROQ_API_KEY=gsk_...
 AI_GEMINI_MODEL=gemini-2.5-flash              # conferir o nome atual no Google AI Studio
 AI_GROQ_MODEL=openai/gpt-oss-120b             # bom suporte a tool calling
 AI_GROQ_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
-AI_PRIMARY_PROVIDER=gemini                    # gemini | groq
+AI_PRIMARY_PROVIDER=groq                      # gemini | groq
 AI_ROUTING_MODE=fallback                      # fallback | round-robin
 AI_DAILY_MESSAGE_LIMIT_PER_STORE=300
 ```

@@ -1,6 +1,7 @@
 // Roda o conjunto de frases (test/frases.json) contra CADA provedor de IA configurado e compara
 // se a IA escolheu a ferramenta e os dados certos. Não altera nada no banco: as ferramentas são simuladas.
 // Uso: pnpm --filter @catalogo/api bot:frases      (direcao.md, seção 10)
+// Nos planos gratuitos o limite é por minuto: ao bater nele, o script espera e repete a frase.
 import { readFileSync } from 'node:fs';
 import { generateText, isStepCount, type ToolSet } from 'ai';
 import { instrucoes } from '../src/modules/ai/agent.js';
@@ -38,14 +39,20 @@ function toolsSimuladas(chamadas: { tool: string; args: Record<string, unknown> 
 }
 
 const normalizar = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : v);
+/** No JSON, "Preta|Preto" aceita qualquer uma das formas. */
+const bate = (esperado: unknown, recebido: unknown) =>
+  typeof esperado === 'string' ? esperado.split('|').some((e) => normalizar(e) === normalizar(recebido)) : normalizar(esperado) === normalizar(recebido);
 function confere(esperado: unknown, recebido: unknown): boolean {
   if (Array.isArray(esperado)) {
-    const lista = Array.isArray(recebido) ? recebido.map(normalizar) : [];
-    return esperado.every((e) => lista.includes(normalizar(e)));
+    const lista = Array.isArray(recebido) ? recebido : [];
+    return esperado.every((e) => lista.some((r) => bate(e, r)));
   }
   if (typeof esperado === 'number') return typeof recebido === 'number' && Math.abs(recebido - esperado) < 0.001;
-  return normalizar(esperado) === normalizar(recebido);
+  return bate(esperado, recebido);
 }
+
+const limiteDeUso = (erro: unknown) => erro instanceof Error && /quota|rate limit|resource.?exhausted|429/i.test(erro.message);
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function avaliar(caso: Caso, chamadas: { tool: string; args: Record<string, unknown> }[]) {
   const { esperado } = caso;
@@ -76,8 +83,9 @@ for (const p of provedores) {
   let tempo = 0;
   for (const caso of casos) {
     const chamadas: { tool: string; args: Record<string, unknown> }[] = [];
-    const inicio = Date.now();
-    let problema: string | null;
+    let inicio = Date.now();
+    let problema: string | null = null;
+    for (let tentativa = 1; ; tentativa++) {
     try {
       const r = await generateText({
         model: p.modelo,
@@ -96,8 +104,18 @@ for (const p of provedores) {
       });
       tokens += (r.totalUsage.inputTokens ?? 0) + (r.totalUsage.outputTokens ?? 0);
       problema = avaliar(caso, chamadas);
+      break;
     } catch (erro) {
+      if (limiteDeUso(erro) && tentativa < 4) {
+        console.log(`   ⏳ limite por minuto do ${p.provedor}, aguardando 30s...`);
+        await esperar(30_000);
+        chamadas.length = 0;
+        inicio = Date.now();
+        continue;
+      }
       problema = `erro: ${erro instanceof Error ? erro.message.slice(0, 120) : String(erro)}`;
+      break;
+    }
     }
     tempo += Date.now() - inicio;
     if (!problema) acertos++;

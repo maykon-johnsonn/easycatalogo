@@ -5,6 +5,21 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 2: chaves de IA e Telegram conectadas, Groq como primário
+
+- **O que foi feito:**
+  - Chaves validadas sem expor os valores: bot **@easy_catalogo_bot** respondendo por polling; Gemini e Groq aceitando as chaves, com os modelos configurados disponíveis.
+  - Frases de teste (`bot:frases`) com as IAs reais: **Groq 16/16** (~2 s por frase); Gemini 7/16, e todos os erros vistos foram de cota, nenhum de interpretação.
+  - O plano grátis do Gemini 2.5 Flash tem limite de **20 requisições/dia** por modelo (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). Por isso `AI_PRIMARY_PROVIDER` passou a ser `groq` (padrão, `.env` e `.env.example`).
+  - Roteador (`ai/providers.ts`): em erro 429, o provedor fica pausado pelo prazo que ele informa (`retry-after` ou `retryDelay`, de 1 min a 24 h), já na primeira falha.
+  - `frases-teste.ts`: espera 30 s e repete quando bate no limite por minuto; aceita alternativas no esperado (`"Preta|Preto"`).
+  - `teste-bot.ts`: simulação independente de qual provedor é o primário, mais a verificação nova do 429 (20/20).
+- **Por quê:** com o Gemini como primário, o bot esgotaria a cota grátis em ~10 mensagens por dia e depois perderia tempo em toda mensagem tentando de novo antes de cair no Groq.
+- **Pendências:**
+  - Teste real no Telegram pelo usuário.
+  - Merge na `main`.
+  - Antes de ter vários lojistas: plano pago de pelo menos um provedor. O Groq grátis tem limite de tokens por minuto, e as frases bateram nele.
+
 ## 2026-10-30: Fase 2: estrutura do bot (IA + Telegram), pronta para receber as chaves
 
 - **O que foi feito (branch `feat/fase2-bot`):**

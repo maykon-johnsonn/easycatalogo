@@ -2,8 +2,10 @@
 // (no lugar de Gemini/Groq), contra o Supabase real. Apaga tudo o que criou no fim.
 // Uso: pnpm --filter @catalogo/api teste:bot
 import sharp from 'sharp';
+import { APICallError } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { buildApp } from '../src/app.js';
+import { env } from '../src/config/env.js';
 import { supabaseAdmin } from '../src/config/supabase.js';
 import { definirModelosParaTeste } from '../src/modules/ai/providers.js';
 import { converterUpdate } from '../src/modules/channels/telegram/adapter.js';
@@ -53,11 +55,14 @@ const falhar = () => () => {
   throw new Error('503 simulado');
 };
 
-const gemini = modeloSimulado();
-const groq = modeloSimulado();
+// Segue o AI_PRIMARY_PROVIDER do .env: "primario" é quem responde primeiro, "reserva" o fallback.
+const NOME_PRIMARIO = env.AI_PRIMARY_PROVIDER;
+const NOME_RESERVA = NOME_PRIMARIO === 'gemini' ? 'groq' : 'gemini';
+const primario = modeloSimulado();
+const reserva = modeloSimulado();
 definirModelosParaTeste({
-  gemini: { provedor: 'gemini', nomeModelo: 'gemini-simulado', modelo: gemini.modelo },
-  groq: { provedor: 'groq', nomeModelo: 'groq-simulado', modelo: groq.modelo },
+  [NOME_PRIMARIO]: { provedor: NOME_PRIMARIO, nomeModelo: 'primario-simulado', modelo: primario.modelo },
+  [NOME_RESERVA]: { provedor: NOME_RESERVA, nomeModelo: 'reserva-simulado', modelo: reserva.modelo },
 });
 
 // ---- Canal falso ----
@@ -151,7 +156,7 @@ try {
   ok(/Recebi 1 foto/.test(r), 'Foto sem legenda gera aviso pedindo nome e preço');
 
   // 5. Texto cria o produto com a foto pendente
-  gemini.programar(
+  primario.programar(
     chamarTool('criar_produto', { nome: 'Blusa Canelada', preco: 59.9, tamanhos: ['P', 'M', 'G'], cores: ['Preta'] }),
     responderTexto('✅ #1 Blusa Canelada, R$ 59,90, P/M/G'),
   );
@@ -166,42 +171,42 @@ try {
   ok(blusa?.imagens.length === 1, 'Foto pendente anexada ao produto');
 
   // 6. Edição pelo "último produto" (sem código)
-  gemini.programar(chamarTool('editar_produto', { preco: 49.9 }), responderTexto('✅ Preço atualizado'));
+  primario.programar(chamarTool('editar_produto', { preco: 49.9 }), responderTexto('✅ Preço atualizado'));
   await enviarEEsperar(mensagem({ texto: 'na verdade é 49,90' }));
   const { data: editada } = await supabaseAdmin.from('produtos').select('preco_original').eq('id', blusa!.id).single();
   ok(editada?.preco_original === 49.9, 'Edição usa o último produto da conversa');
 
   // 7. Erro de regra vira explicação (promoção maior que o preço)
-  gemini.programar(chamarTool('editar_produto', { preco_promocional: 99 }), responderTexto('A promoção precisa ser menor.'));
+  primario.programar(chamarTool('editar_produto', { preco_promocional: 99 }), responderTexto('A promoção precisa ser menor.'));
   await enviarEEsperar(mensagem({ texto: 'promoção por 99' }));
-  const ultimaChamada = (gemini.modelo.doGenerateCalls.at(-1)?.prompt ?? []) as { role: string; content: unknown }[];
+  const ultimaChamada = (primario.modelo.doGenerateCalls.at(-1)?.prompt ?? []) as { role: string; content: unknown }[];
   const resultadoTool = JSON.stringify(ultimaChamada.filter((p) => p.role === 'tool'));
   ok(/menor que o pre/i.test(resultadoTool), 'Erro de validação é devolvido à IA para explicar');
 
-  // 8. Fallback: Gemini falha, Groq responde
-  const chamadasGroq = groq.estado.chamadas;
-  gemini.programar(falhar());
-  groq.programar(responderTexto('Você tem 1 produto.'));
+  // 8. Fallback: o primário falha, a reserva responde
+  const chamadasReserva = reserva.estado.chamadas;
+  primario.programar(falhar());
+  reserva.programar(responderTexto('Você tem 1 produto.'));
   r = await enviarEEsperar(mensagem({ texto: 'quantos produtos eu tenho?' }));
-  ok(r.includes('1 produto') && groq.estado.chamadas === chamadasGroq + 1, 'Fallback para o Groq quando o Gemini falha');
+  ok(r.includes('1 produto') && reserva.estado.chamadas === chamadasReserva + 1, 'Fallback para a reserva quando o primário falha');
   const { data: registro } = await supabaseAdmin
     .from('mensagens')
     .select('provedor_ia, usou_fallback, tokens_entrada')
     .eq('canal', 'telegram')
     .eq('id_externo', `${REMETENTE}:${msgId}`)
     .single();
-  ok(registro?.provedor_ia === 'groq' && registro.usou_fallback && registro.tokens_entrada === 10, 'Rastreio de provedor, fallback e tokens');
+  ok(registro?.provedor_ia === NOME_RESERVA && registro.usou_fallback && registro.tokens_entrada === 10, 'Rastreio de provedor, fallback e tokens');
 
   // 9. Falha depois de alterar dados: não repete no outro provedor
-  const groqAntes = groq.estado.chamadas;
-  gemini.programar(chamarTool('pausar_produto', { numero: blusa!.numero }), falhar());
+  const reservaAntes = reserva.estado.chamadas;
+  primario.programar(chamarTool('pausar_produto', { numero: blusa!.numero }), falhar());
   r = await enviarEEsperar(mensagem({ texto: 'pausa a #1' }));
   const { data: pausada } = await supabaseAdmin.from('produtos').select('ativo').eq('id', blusa!.id).single();
-  ok(pausada?.ativo === false && /Feito/.test(r) && groq.estado.chamadas === groqAntes, 'Sem retentativa depois de executar uma ação');
+  ok(pausada?.ativo === false && /Feito/.test(r) && reserva.estado.chamadas === reservaAntes, 'Sem retentativa depois de executar uma ação');
 
   // 10. Álbum com legenda: espera as fotos e cria com todas
-  gemini.limpar();
-  gemini.programar(chamarTool('criar_produto', { nome: 'Vestido Midi', preco: 159 }), responderTexto('✅ #2 Vestido Midi'));
+  primario.limpar();
+  primario.programar(chamarTool('criar_produto', { nome: 'Vestido Midi', preco: 159 }), responderTexto('✅ #2 Vestido Midi'));
   const antes = enviadas.length;
   await receber([
     { ...foto(), grupoMidia: 'album-1', texto: 'vestido midi 159' },
@@ -220,6 +225,24 @@ try {
   // 11. Áudio sem provedor de transcrição configurado → resposta amigável
   r = await enviarEEsperar(mensagem({ tipo: 'audio', baixarMidia: async () => ({ conteudo: Buffer.from('x'), mimeType: 'audio/ogg' }) }));
   ok(/Não consegui entender o áudio/.test(r), 'Falha na transcrição gera resposta (nenhuma mensagem fica sem resposta)');
+
+  // 12. Limite de uso (429 com prazo, como a cota diária do Gemini): o primário fica pausado pelo prazo pedido
+  primario.limpar();
+  primario.programar(() => {
+    throw new APICallError({
+      message: 'You exceeded your current quota',
+      url: 'https://ia.simulada',
+      requestBodyValues: {},
+      statusCode: 429,
+      responseBody: '{"error":{"details":[{"retryDelay": "3600s"}]}}',
+      isRetryable: false,
+    });
+  });
+  reserva.programar(responderTexto('Você tem 2 produtos.'), responderTexto('Você tem 2 produtos ainda.'));
+  await enviarEEsperar(mensagem({ texto: 'quantos produtos?' }));
+  const primarioAntes = primario.estado.chamadas;
+  r = await enviarEEsperar(mensagem({ texto: 'e agora?' }));
+  ok(r.includes('2 produtos ainda') && primario.estado.chamadas === primarioAntes, 'Provedor no limite fica pausado (não é chamado de novo)');
 } finally {
   // Limpeza: arquivos (produtos e pendentes), loja (cascata) e mensagens do remetente de teste.
   const [{ data: imgs }, { data: pend }] = await Promise.all([

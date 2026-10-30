@@ -38,7 +38,7 @@ const envSchema = z
     AI_GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash'),
     AI_GROQ_MODEL: z.string().min(1).default('openai/gpt-oss-120b'),
     AI_GROQ_TRANSCRIPTION_MODEL: z.string().min(1).default('whisper-large-v3-turbo'),
-    AI_PRIMARY_PROVIDER: z.enum(['gemini', 'groq']).default('gemini'),
+    AI_PRIMARY_PROVIDER: z.enum(['gemini', 'groq']).default('groq'),
     AI_ROUTING_MODE: z.enum(['fallback', 'round-robin']).default('fallback'),
     AI_DAILY_MESSAGE_LIMIT_PER_STORE: z.coerce.number().int().positive().default(300),
   })
