@@ -36,3 +36,7 @@ export function gerarSlug(nome: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 50);
 }
+
+/** Link que abre a conversa no WhatsApp com a mensagem já escrita. */
+export const linkWhatsApp = (telefone: string, texto: string) =>
+  `https://wa.me/${telefone}?text=${encodeURIComponent(texto)}`;
