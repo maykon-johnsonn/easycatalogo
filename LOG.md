@@ -5,6 +5,16 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Ajustes após o primeiro teste do painel
+
+- **O que foi feito:**
+  - Corrigido o visual: fundo preto e botões invisíveis.
+  - Administrador geral trocado para `maykonjohnsonn@gmail.com`, com senha temporária. A conta criada antes foi removida.
+- **Por quê:**
+  - O servidor de desenvolvimento estava servindo o CSS antigo do modelo do Next, que tem fundo escuro no modo escuro do sistema e não tem as cores da marca. O código estava certo: o build de produção já usava o CSS novo. A correção foi reiniciar o `next dev` com o cache `.next` apagado.
+  - A loja de teste "Lu bolsas" foi criada no primeiro teste, com o mesmo e-mail como dono. Ela foi mantida.
+- **Observação:** se o visual voltar a ficar estranho depois de mexer no `globals.css`, reinicie o `pnpm dev:web` apagando `apps/web/.next`.
+
 ## 2026-10-30: Fase 1, Passo 2: telas do painel do lojista e da administração geral
 
 - **O que foi feito (branch `feat/painel-web`):**
