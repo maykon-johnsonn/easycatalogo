@@ -5,6 +5,20 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 0, Passo 2: esqueleto do monorepo e migration da Fase 1
+
+- **O que foi feito:**
+  - Monorepo pnpm com `apps/api` (Fastify 5 + TypeScript strict + tsx), `apps/web` (Next.js 16 + Tailwind 4) e `packages/shared` (schemas Zod de produto e loja).
+  - `env.ts` validado com Zod. Clientes do Supabase (secret key) e do S3/MinIO. Rota `/health`, que testa a conexão com o banco.
+  - Migration `supabase/migrations/20261030000100_fase1_catalogo.sql` com `lojas`, `loja_membros`, `produtos` e `produto_imagens`. Inclui código curto sequencial por loja (trigger), `atualizado_em` automático, FK composta para garantir imagem e produto da mesma loja, e RLS só de leitura (vitrine pública + membros no painel).
+  - `.env.example` em cada app. Os `.env` locais ficam fora do Git.
+- **Por quê:** base para a Fase 1 (painel + vitrine). A migration fica versionada no repositório para o banco poder ser recriado do zero. O RLS não tem políticas de escrita porque todas as escritas passam pela API, onde ficam as regras de negócio (direcao.md, seção 8).
+- **Decisões:**
+  - Uso das chaves novas do Supabase (`sb_secret_` / `sb_publishable_`) no lugar de `service_role` / `anon`.
+  - API na porta 3333 para não colidir com o Next.js (3000).
+  - O `/health` não usa `select` com `head: true`, porque nesse modo uma tabela inexistente passa como ok (falso positivo encontrado no teste).
+- **Pendências:** aplicar a migration no projeto Supabase (o MCP conectado é de outra conta). Definir o storage de desenvolvimento enquanto o MinIO não existe.
+
 ## 2026-10-30: Fase 0, Passo 1: versionamento e diário de desenvolvimento
 
 - **O que foi feito:** inicializado o repositório Git (branch `main`). Criados o `.gitignore` (bloqueia `.env`, `node_modules`, builds e arquivos de sistema), o `.gitattributes` (finais de linha LF) e este `LOG.md`.

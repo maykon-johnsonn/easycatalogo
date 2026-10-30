@@ -201,7 +201,7 @@ Convenções: toda tabela tem `criado_em timestamptz default now()`. As tabelas 
 
 - **Vitrine (anon):** leitura apenas de lojas `ativa = true` e produtos `ativo = true AND excluido_em IS NULL`, e das imagens desses produtos.
 - **Painel (authenticated):** leitura e escrita limitadas às lojas em que o usuário está em `loja_membros`.
-- **Backend (service role):** **ignora o RLS**. O isolamento entre lojas no backend depende de **todo serviço de catálogo receber `loja_id` como parâmetro obrigatório** e filtrar por ele. Nenhuma query de catálogo pode existir sem esse filtro.
+- **Backend (secret key, antiga service role):** **ignora o RLS**. O isolamento entre lojas no backend depende de **todo serviço de catálogo receber `loja_id` como parâmetro obrigatório** e filtrar por ele. Nenhuma query de catálogo pode existir sem esse filtro.
 
 ---
 
@@ -302,7 +302,7 @@ apps/
 │   ├── config/
 │   │   ├── env.ts            # Schema Zod das variáveis de ambiente
 │   │   ├── storage.ts        # S3Client apontando para o MinIO
-│   │   └── supabase.ts       # Supabase client (service role)
+│   │   └── supabase.ts       # Supabase client (secret key)
 │   ├── modules/
 │   │   ├── channels/
 │   │   │   ├── types.ts      # InboundMessage, ChannelAdapter
@@ -443,14 +443,14 @@ Começa **apenas quando os critérios de validação abaixo forem atingidos no T
 ## 13. Variáveis de Ambiente (`.env.example`)
 
 ```env
-PORT=3000
+PORT=3333
 NODE_ENV=development
 PUBLIC_WEB_URL=https://vitrine.seudominio.com
 
 # Supabase
 SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=ey...
-SUPABASE_ANON_KEY=ey...
+SUPABASE_SECRET_KEY=sb_secret_...          # só na API, nunca no front
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_... # usada pelo app web
 DATABASE_URL=postgresql://...        # conexão direta usada pelo pg-boss
 
 # Storage (MinIO na VPS)
