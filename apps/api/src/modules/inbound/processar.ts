@@ -27,8 +27,21 @@ import {
 const ESPERA_ALBUM_MS = 2500;
 /** Depois da última foto sem legenda, quanto esperar para avisar o lojista. */
 const ESPERA_AVISO_FOTOS_MS = 4000;
-const HISTORICO_MENSAGENS = 6;
-const HISTORICO_JANELA_MS = 30 * 60 * 1000;
+// Memória da conversa: até 10 mensagens das últimas 2 horas, compactadas (sem links, respostas
+// longas cortadas). Dá contexto ("muda a cor dela", "a 4") gastando pouco token.
+const HISTORICO_MENSAGENS = 10;
+const HISTORICO_JANELA_MS = 2 * 60 * 60 * 1000;
+const HISTORICO_MAX_LOJISTA = 500;
+const HISTORICO_MAX_BOT = 240;
+
+function compactar(texto: string, max: number) {
+  const limpo = texto
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  return limpo.length > max ? `${limpo.slice(0, max)}…` : limpo;
+}
 
 const MSG = {
   naoVinculado:
@@ -285,7 +298,7 @@ export function criarProcessador(opcoes: { canais: Map<Canal, ChannelAdapter>; f
     if (!id) return null;
     try {
       const p = await obterProduto(operador.loja_id, id);
-      return { numero: p.numero, nome: p.nome };
+      return { numero: p.numero, nome: p.nome, fotos: p.imagens.length };
     } catch (e) {
       if (e instanceof HttpErro) return null; // excluído
       throw e;
@@ -305,7 +318,7 @@ export function criarProcessador(opcoes: { canais: Map<Canal, ChannelAdapter>; f
     if (error) throw erroDoBanco(error);
     return data.reverse().map((msg) => ({
       role: msg.direcao === 'entrada' ? ('user' as const) : ('assistant' as const),
-      content: msg.conteudo!,
+      content: compactar(msg.conteudo!, msg.direcao === 'entrada' ? HISTORICO_MAX_LOJISTA : HISTORICO_MAX_BOT),
     }));
   }
 

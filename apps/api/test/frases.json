@@ -114,9 +114,10 @@
     "frase": "adiciona essas fotos na 4",
     "fotos_pendentes": 2,
     "esperado": {
-      "tool": "adicionar_fotos",
+      "tool": "editar_produto",
       "args": {
-        "numero": 4
+        "numero": 4,
+        "anexar_fotos_enviadas": true
       }
     }
   },
@@ -158,26 +159,27 @@
     "frase": "deixe só a foto enviada por último, exclua a outra, e coloque a opção de cor somente para vermelho",
     "ultimo_produto": {
       "numero": 1,
-      "nome": "Bolsa de crochê vermelho cereja"
+      "nome": "Bolsa de crochê vermelho cereja",
+      "fotos": 2
     },
     "observacao": "Caso real do teste no Telegram (2026-10-30): a IA respondeu ✅ sem chamar ferramenta.",
     "esperado": {
-      "tool": "remover_fotos",
+      "tool": "editar_produto",
       "args": {
-        "manter_ultimas": 1
-      },
-      "tambem": [
-        "editar_produto"
-      ]
+        "manter_ultimas_fotos": 1,
+        "cores": [
+          "Vermelho|Vermelha"
+        ]
+      }
     }
   },
   {
     "frase": "tira a segunda foto da #1",
     "esperado": {
-      "tool": "remover_fotos",
+      "tool": "editar_produto",
       "args": {
         "numero": 1,
-        "posicoes": [
+        "remover_fotos": [
           2
         ]
       }
@@ -187,12 +189,13 @@
     "frase": "coloca a última foto que mandei como capa",
     "ultimo_produto": {
       "numero": 1,
-      "nome": "Bolsa de crochê vermelho cereja"
+      "nome": "Bolsa de crochê vermelho cereja",
+      "fotos": 2
     },
     "esperado": {
-      "tool": "definir_foto_principal",
+      "tool": "editar_produto",
       "args": {
-        "ultima_enviada": true
+        "capa_ultima_enviada": true
       }
     }
   },
@@ -200,7 +203,8 @@
     "frase": "muda a cor dela para vermelho",
     "ultimo_produto": {
       "numero": 1,
-      "nome": "Bolsa de crochê vermelho cereja"
+      "nome": "Bolsa de crochê vermelho cereja",
+      "fotos": 2
     },
     "esperado": {
       "tool": "editar_produto",

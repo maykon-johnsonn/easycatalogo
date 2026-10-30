@@ -97,6 +97,17 @@ O código do agente **nunca chama um provedor diretamente**. Ele pede um modelo 
 - **Transcrição de áudio:** Groq Whisper como primário. Se falhar, o áudio é enviado ao Gemini, que também aceita áudio.
 - **Rastreio:** cada mensagem registra em `mensagens` qual provedor e modelo respondeu, os tokens usados e se houve fallback. Assim dá para comparar qualidade e custo dos dois antes de decidir onde investir.
 - **Modelos configuráveis:** os nomes dos modelos vêm do `.env` (`AI_GEMINI_MODEL`, `AI_GROQ_MODEL`). Trocar ou adicionar um provedor (ex.: OpenAI no futuro) não pode exigir mudança nas tools nem no agente.
+- **Modelo do Groq em avaliação: `openai/gpt-oss-20b`.** Nas frases de teste de 2026-10-30, já com o fluxo econômico abaixo, ele acertou 19/20. A falha foi uma chamada recusada pelo próprio Groq, que agora ganha uma nova tentativa. É mais barato e tem cota grátis própria. O padrão do código continua `gpt-oss-120b` até o 20b passar pelos testes reais no Telegram.
+
+**Economia de tokens (o que vai em cada mensagem):**
+- **A IA não vê imagens.** A foto vai para o storage e a IA recebe só a contagem ("2 fotos aguardando"). Custo de imagem: zero.
+- **Atalhos sem IA** (`ai/atalhos.ts`): comandos de padrão fixo e com código ("pausa a #3", "reativa a #3", "apaga a #15", "muda o preço da #12 para 49,90", "coloca a #7 em promoção por 79", "tira a promoção da 7") rodam direto nas tools. Custo zero, resposta instantânea. Não contam no limite diário. Com fotos aguardando, tudo vai para a IA.
+- **Confirmação pelo código:** depois de uma ação bem-sucedida, o agente para e a resposta ("✅ Atualizado: #1 ..., preço, tamanhos, cores, fotos, link") é montada a partir do resultado real. Isso corta a segunda chamada à IA e garante que nenhum ✅ seja inventado. Em pedidos com "e", "também", "depois" ou ";", a IA ganha mais um passo para concluir as outras ações, mas a confirmação continua vindo do código.
+- **Uma tool por produto:** dados e fotos (anexar, remover, capa) vão numa única chamada de `editar_produto`. São menos tools descritas em cada chamada e pedidos compostos ("tira a foto antiga e muda a cor") cabem em uma ação só.
+- **Memória compacta:** até 10 mensagens das últimas 2 horas, sem links e com as respostas do bot cortadas em 240 caracteres. Junto vão o último produto da conversa (com o número de fotos) e as fotos aguardando. É contexto suficiente para "muda a cor dela" e para a resposta "a 4" a uma pergunta.
+- **Resultado medido:** a média caiu de ~3.800 para ~1.900 tokens por frase de teste (−50%), contando os atalhos.
+
+**Opção futura: Jev (TypeSafe AI).** É um modelo que só decide entre opções fechadas, sem gerar texto. Lançado em setembro de 2026 e cobrado por token de entrada, poderia fazer a triagem (intenção, qual produto, fotos para novo ou existente) antes do Groq. Não entra agora porque é muito recente, fechado e mais um fornecedor, e o custo atual já é baixo. O AI SDK tem `experimental_decide` para esse tipo de modelo. Reavaliar quando houver volume real.
 
 > **Atenção:** no Groq, só usar modelos com bom suporte a tool calling. Validar isso com o conjunto de frases de teste (seção 10) antes de ligar o round-robin, porque os dois provedores precisam extrair os dados com a mesma qualidade.
 

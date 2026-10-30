@@ -1,4 +1,4 @@
-import { tool, type ToolSet } from 'ai';
+import { tool, type ToolExecutionOptions, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { produtoCriarSchema, produtoEditarSchema, type ProdutoEditar } from '@catalogo/shared';
 import { env } from '../../../config/env.js';
@@ -59,6 +59,41 @@ function resumo(p: ProdutoServico, slug: string) {
   };
 }
 
+/** Tools que alteram o catálogo. Depois delas a resposta sai do código, sem nova chamada à IA. */
+export const FERRAMENTAS_QUE_ALTERAM = new Set([
+  'criar_produto',
+  'editar_produto',
+  'pausar_produto',
+  'reativar_produto',
+  'excluir_produto',
+]);
+
+const TITULOS: Record<string, string> = {
+  criar_produto: '✅ Cadastrado',
+  editar_produto: '✅ Atualizado',
+  pausar_produto: '⏸️ Pausado (fora da vitrine)',
+  reativar_produto: '▶️ De volta na vitrine',
+};
+
+export const resultadoComErro = (saida: unknown) => !saida || typeof saida !== 'object' || 'erro' in saida;
+
+/** Confirmação montada a partir do resultado real da tool: o ✅ só existe se a ação aconteceu. */
+export function confirmacao(nomeTool: string, saida: unknown) {
+  const p = saida as Partial<ReturnType<typeof resumo>> & { excluido?: boolean };
+  if (nomeTool === 'excluir_produto') return `🗑️ Excluído: #${p.numero} ${p.nome}`;
+  const preco = p.preco_promocional ? `${p.preco_promocional} (de ${p.preco})` : p.preco;
+  const fotos = p.fotos != null ? `${p.fotos} foto${p.fotos === 1 ? '' : 's'}` : null;
+  const detalhes = [preco, p.tamanhos?.join('/'), p.cores?.join('/'), fotos].filter(Boolean).join(' · ');
+  return [`${TITULOS[nomeTool] ?? '✅ Feito'}: #${p.numero} ${p.nome}`, detalhes, p.link].filter(Boolean).join('\n');
+}
+
+/** Executa uma tool sem passar pela IA (atalhos). As nossas tools não usam as opções do AI SDK. */
+export function executarTool(tools: ToolSet, nome: string, args: Record<string, unknown>): Promise<unknown> {
+  const t = tools[nome];
+  if (!t?.execute) throw new Error(`Tool desconhecida: ${nome}`);
+  return Promise.resolve(t.execute(args, { toolCallId: `atalho-${nome}`, messages: [] } as unknown as ToolExecutionOptions<never>));
+}
+
 /** Erros esperados viram resposta para a IA explicar ao lojista; o resto sobe. */
 async function seguro<T>(fn: () => Promise<T>): Promise<T | { erro: string }> {
   try {
@@ -111,6 +146,43 @@ export function criarTools(ctx: ContextoTools): ToolSet {
     }
   }
 
+  async function anexarFotosEnviadas(produto: ProdutoServico) {
+    const atualizado = await usarFotosPendentes(produto);
+    if (atualizado.imagens.length === produto.imagens.length) {
+      throw new HttpErro(
+        400,
+        produto.imagens.length >= MAX_IMAGENS_POR_PRODUTO
+          ? `O produto já tem o máximo de ${MAX_IMAGENS_POR_PRODUTO} fotos`
+          : 'Não há fotos novas. O lojista precisa enviar as fotos antes',
+      );
+    }
+    return atualizado;
+  }
+
+  const maisRecentes = (fotos: ProdutoServico['imagens']) => [...fotos].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+
+  async function removerFotos(produto: ProdutoServico, posicoes?: number[], manterUltimas?: number) {
+    const fotos = produto.imagens;
+    let remover: typeof fotos;
+    if (posicoes?.length) {
+      const invalida = posicoes.find((p) => p > fotos.length);
+      if (invalida) throw new HttpErro(400, `O produto tem ${fotos.length} foto(s); não existe a posição ${invalida}`);
+      remover = fotos.filter((_, i) => posicoes.includes(i + 1));
+    } else {
+      remover = maisRecentes(fotos).slice(manterUltimas);
+    }
+    if (!remover.length) throw new HttpErro(400, `Nada a remover: o produto tem ${fotos.length} foto(s)`);
+    for (const foto of remover) await removerImagem(lojaId, foto.id);
+    return obterProduto(lojaId, produto.id);
+  }
+
+  async function trocarCapa(produto: ProdutoServico, posicao?: number, ultimaEnviada?: boolean) {
+    const fotos = produto.imagens;
+    const escolhida = ultimaEnviada ? maisRecentes(fotos)[0] : posicao != null ? fotos[posicao - 1] : undefined;
+    if (!escolhida) throw new HttpErro(400, `Escolha uma foto de 1 a ${fotos.length}`);
+    return reordenarImagens(lojaId, produto.id, [escolhida.id, ...fotos.filter((f) => f.id !== escolhida.id).map((f) => f.id)]);
+  }
+
   async function concluir(produto: ProdutoServico, acao: string) {
     await definirUltimoProduto(operadorId, produto.id);
     ctx.efeitos.push(`${acao}: #${produto.numero} ${produto.nome}`);
@@ -144,7 +216,10 @@ export function criarTools(ctx: ContextoTools): ToolSet {
     }),
 
     editar_produto: tool({
-      description: 'Altera dados de UM produto existente. Envie só os campos que mudam.',
+      description:
+        'Altera UM produto existente: dados e fotos, tudo numa chamada só. Envie só o que muda. ' +
+        'Fotos: "adiciona essas fotos" = anexar_fotos_enviadas; "deixa só a última foto" = manter_ultimas_fotos 1; ' +
+        '"tira a 2ª foto" = remover_fotos [2]; "a última como capa" = capa_ultima_enviada.',
       inputSchema: z.object({
         numero: numeroOpcional,
         nome: z.string().optional(),
@@ -152,91 +227,41 @@ export function criarTools(ctx: ContextoTools): ToolSet {
         preco_promocional: z.number().optional().describe('Novo preço promocional'),
         remover_promocao: z.boolean().optional().describe('true para encerrar a promoção'),
         ...camposProduto,
+        anexar_fotos_enviadas: z.boolean().optional().describe('true para anexar as fotos que o lojista acabou de enviar'),
+        remover_fotos: z.array(z.number().int().positive()).optional().describe('Posições das fotos a remover (1 = primeira da vitrine)'),
+        manter_ultimas_fotos: z.number().int().positive().optional().describe('Mantém só as N fotos enviadas mais recentemente'),
+        capa_posicao: z.number().int().positive().optional().describe('Posição da foto que vira capa'),
+        capa_ultima_enviada: z.boolean().optional().describe('true para a foto enviada mais recentemente virar capa'),
       }),
-      execute: ({ numero, preco, preco_promocional, remover_promocao, ...resto }) =>
+      execute: ({
+        numero,
+        preco,
+        preco_promocional,
+        remover_promocao,
+        anexar_fotos_enviadas,
+        remover_fotos,
+        manter_ultimas_fotos,
+        capa_posicao,
+        capa_ultima_enviada,
+        ...resto
+      }) =>
         seguro(async () => {
-          const produto = await alvo(numero);
+          let produto = await alvo(numero);
           const mudancas: ProdutoEditar = validar(produtoEditarSchema, {
             ...resto,
             ...(preco != null && { preco_original: preco }),
             ...(preco_promocional != null && { preco_promocional }),
             ...(remover_promocao && { preco_promocional: null }),
           });
-          if (!Object.keys(mudancas).length) throw new HttpErro(400, 'Nenhuma alteração informada');
-          return concluir(await editarProduto(lojaId, produto.id, mudancas), 'Editado');
-        }),
-    }),
+          const mexeEmFotos =
+            anexar_fotos_enviadas || remover_fotos?.length || manter_ultimas_fotos != null || capa_posicao != null || capa_ultima_enviada;
+          if (!Object.keys(mudancas).length && !mexeEmFotos) throw new HttpErro(400, 'Nenhuma alteração informada');
 
-    adicionar_fotos: tool({
-      description: 'Anexa a um produto existente as fotos que o lojista acabou de enviar.',
-      inputSchema: z.object({ numero: numeroOpcional }),
-      execute: ({ numero }) =>
-        seguro(async () => {
-          const produto = await alvo(numero);
-          const atualizado = await usarFotosPendentes(produto);
-          if (atualizado.imagens.length === produto.imagens.length) {
-            throw new HttpErro(
-              400,
-              produto.imagens.length >= MAX_IMAGENS_POR_PRODUTO
-                ? `O produto já tem o máximo de ${MAX_IMAGENS_POR_PRODUTO} fotos`
-                : 'Não há fotos novas. O lojista precisa enviar as fotos antes',
-            );
-          }
-          return concluir(atualizado, 'Fotos adicionadas');
-        }),
-    }),
-
-    remover_fotos: tool({
-      description:
-        'Remove fotos de UM produto. Use "posicoes" (1 = primeira foto da vitrine) ou "manter_ultimas" ' +
-        '(ex.: "deixa só a última foto que mandei" = manter_ultimas 1).',
-      inputSchema: z.object({
-        numero: numeroOpcional,
-        posicoes: z.array(z.number().int().positive()).optional().describe('Posições das fotos a remover, na ordem da vitrine'),
-        manter_ultimas: z.number().int().positive().optional().describe('Mantém só as N fotos enviadas mais recentemente'),
-      }),
-      execute: ({ numero, posicoes, manter_ultimas }) =>
-        seguro(async () => {
-          const usaPosicoes = Boolean(posicoes?.length);
-          if (usaPosicoes === (manter_ultimas != null)) {
-            throw new HttpErro(400, 'Informe "posicoes" ou "manter_ultimas" (um dos dois)');
-          }
-          const produto = await alvo(numero);
-          const fotos = produto.imagens;
-          let remover: typeof fotos;
-          if (posicoes?.length) {
-            const invalida = posicoes.find((p) => p > fotos.length);
-            if (invalida) throw new HttpErro(400, `O produto tem ${fotos.length} foto(s); não existe a posição ${invalida}`);
-            remover = fotos.filter((_, i) => posicoes.includes(i + 1));
-          } else {
-            const recentes = [...fotos].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
-            remover = recentes.slice(manter_ultimas);
-          }
-          if (!remover.length) throw new HttpErro(400, `Nada a remover: o produto tem ${fotos.length} foto(s)`);
-          for (const foto of remover) await removerImagem(lojaId, foto.id);
-          return concluir(await obterProduto(lojaId, produto.id), `${remover.length} foto(s) removida(s)`);
-        }),
-    }),
-
-    definir_foto_principal: tool({
-      description: 'Escolhe qual foto aparece primeiro (capa) na vitrine.',
-      inputSchema: z.object({
-        numero: numeroOpcional,
-        posicao: z.number().int().positive().optional().describe('Posição atual da foto (1 = primeira)'),
-        ultima_enviada: z.boolean().optional().describe('true para usar a foto enviada mais recentemente'),
-      }),
-      execute: ({ numero, posicao, ultima_enviada }) =>
-        seguro(async () => {
-          const produto = await alvo(numero);
-          const fotos = produto.imagens;
-          const escolhida = ultima_enviada
-            ? [...fotos].sort((a, b) => b.criado_em.localeCompare(a.criado_em))[0]
-            : posicao != null
-              ? fotos[posicao - 1]
-              : undefined;
-          if (!escolhida) throw new HttpErro(400, `Escolha uma foto de 1 a ${fotos.length}`);
-          const ordem = [escolhida.id, ...fotos.filter((f) => f.id !== escolhida.id).map((f) => f.id)];
-          return concluir(await reordenarImagens(lojaId, produto.id, ordem), 'Foto principal trocada');
+          if (Object.keys(mudancas).length) produto = await editarProduto(lojaId, produto.id, mudancas);
+          if (anexar_fotos_enviadas) produto = await anexarFotosEnviadas(produto);
+          if (remover_fotos?.length || manter_ultimas_fotos != null) produto = await removerFotos(produto, remover_fotos, manter_ultimas_fotos);
+          if (capa_posicao != null || capa_ultima_enviada) produto = await trocarCapa(produto, capa_posicao, capa_ultima_enviada);
+          return concluir(produto, 'Editado');
         }),
     }),
 

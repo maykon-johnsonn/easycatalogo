@@ -5,6 +5,37 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 2: bot mais econômico (atalhos, confirmação pelo código, memória compacta, gpt-oss-20b)
+
+- **O que foi feito:**
+  - **Atalhos sem IA** (`ai/atalhos.ts`): pausar, reativar, excluir, mudar preço, colocar e tirar promoção, sempre com o código do produto. Executam a tool direto e são gravados com `modelo_ia = 'atalho'` (não contam no limite diário).
+  - **Confirmação pelo código:**
+    - `stopWhen` para o agente logo depois de um passo só com ações bem-sucedidas;
+    - `confirmacao()` monta a resposta a partir do resultado da tool;
+    - toda ação confirmada vem do código, e o texto da IA só aparece quando não houve ação ou quando alguma deu erro;
+    - pedidos com "e/também/depois/;" ganham mais um passo.
+  - **Tools:** `adicionar_fotos`, `remover_fotos` e `definir_foto_principal` viraram campos de `editar_produto` (`anexar_fotos_enviadas`, `remover_fotos`, `manter_ultimas_fotos`, `capa_posicao`, `capa_ultima_enviada`). Com tudo numa chamada, o pedido composto deixou de perder ações.
+  - **Memória:** de 6 mensagens em 30 min para 10 mensagens em 2 h, compactadas (sem links, bot cortado em 240 caracteres, lojista em 500). O último produto vai com o número de fotos.
+  - **Instruções:**
+    - número solto = código do produto ("a 3" = #3);
+    - não escrever confirmação.
+  - **Erro de parâmetros:** quando o provedor recusa uma chamada com parâmetros inválidos e nada foi alterado ainda, há uma nova tentativa no mesmo modelo.
+  - **Frases de teste:**
+    - usam o mesmo fluxo do bot (`executarAgente` + atalhos) e mostram ferramentas e resposta quando falham;
+    - aceitam `FRASES_ARQUIVO`;
+    - não esperam quando o limite é diário.
+  - **`teste-bot`:** 29/29, incluindo cadastro sem segunda chamada, duas ações no mesmo pedido e atalhos sem IA.
+- **Medição (frases de teste):**
+  - antes, ~3.800 tokens por frase (120b, 20/20);
+  - agora, com o `gpt-oss-20b`, **19/20 e ~1.900 tokens por frase (−50%)**, 4 das 20 por atalho, ~1 s por frase com IA. A falha foi a recusa de parâmetros que agora ganha nova tentativa.
+  - O 120b não pôde ser medido por inteiro: a cota grátis diária dele (200 mil tokens) acabou nos testes do dia.
+- **Configuração:** o `.env` local passou a usar `AI_GROQ_MODEL=openai/gpt-oss-20b` para o teste real; o padrão do código continua 120b.
+- **Por quê:** o usuário pediu menos custo e mais eficiência sem perder a sensação de bot inteligente. Avaliado o Jev (TypeSafe AI), que ficou como opção futura de triagem no `direcao.md`.
+- **Pendências:**
+  - Teste real no Telegram com o 20b.
+  - Decidir o modelo padrão.
+  - Plano pago do Groq antes de vários lojistas: o grátis tem 8 mil tokens/minuto e 200 mil/dia por modelo.
+
 ## 2026-10-30: Fase 2: fotos pelo bot e fim das confirmações inventadas
 
 - **O que foi feito:**

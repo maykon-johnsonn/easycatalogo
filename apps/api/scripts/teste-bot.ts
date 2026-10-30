@@ -45,6 +45,13 @@ const chamarTool = (toolName: string, input: object) => () => ({
   usage: uso,
   warnings: [],
 });
+/** Várias ferramentas no mesmo passo (como a IA faz em pedidos com mais de uma ação). */
+const chamarTools = (...chamadas: [string, object][]) => () => ({
+  content: chamadas.map(([toolName, input]) => ({ type: 'tool-call', toolCallId: `c${++seq}`, toolName, input: JSON.stringify(input) })),
+  finishReason: { unified: 'tool-calls', raw: undefined },
+  usage: uso,
+  warnings: [],
+});
 const responderTexto = (text: string) => () => ({
   content: [{ type: 'text', text }],
   finishReason: { unified: 'stop', raw: undefined },
@@ -158,10 +165,11 @@ try {
   // 5. Texto cria o produto com a foto pendente
   primario.programar(
     chamarTool('criar_produto', { nome: 'Blusa Canelada', preco: 59.9, tamanhos: ['P', 'M', 'G'], cores: ['Preta'] }),
-    responderTexto('✅ #1 Blusa Canelada, R$ 59,90, P/M/G'),
   );
+  const chamadasAntesDoCadastro = primario.estado.chamadas;
   r = await enviarEEsperar(mensagem({ texto: 'blusa canelada 59,90 P M G preta' }));
-  ok(r.includes('Blusa Canelada'), 'Cadastro por texto responde com o produto');
+  ok(/✅ Cadastrado: #1 Blusa Canelada/.test(r) && r.includes('R$') && r.includes('/p/1'), 'Cadastro confirmado pelo código, com preço e link');
+  ok(primario.estado.chamadas === chamadasAntesDoCadastro + 1, 'Depois da ação, nenhuma segunda chamada à IA');
   const { data: produtos } = await supabaseAdmin
     .from('produtos')
     .select('id, numero, nome, preco_original, ativo, imagens:produto_imagens (id)')
@@ -171,7 +179,7 @@ try {
   ok(blusa?.imagens.length === 1, 'Foto pendente anexada ao produto');
 
   // 6. Edição pelo "último produto" (sem código)
-  primario.programar(chamarTool('editar_produto', { preco: 49.9 }), responderTexto('✅ Preço atualizado'));
+  primario.programar(chamarTool('editar_produto', { preco: 49.9 }));
   await enviarEEsperar(mensagem({ texto: 'na verdade é 49,90' }));
   const { data: editada } = await supabaseAdmin.from('produtos').select('preco_original').eq('id', blusa!.id).single();
   ok(editada?.preco_original === 49.9, 'Edição usa o último produto da conversa');
@@ -186,9 +194,10 @@ try {
   // 8. Fallback: o primário falha, a reserva responde
   const chamadasReserva = reserva.estado.chamadas;
   primario.programar(falhar());
-  reserva.programar(responderTexto('Você tem 1 produto.'));
+  reserva.programar(responderTexto('Você tem **1 produto**.'));
   r = await enviarEEsperar(mensagem({ texto: 'quantos produtos eu tenho?' }));
   ok(r.includes('1 produto') && reserva.estado.chamadas === chamadasReserva + 1, 'Fallback para a reserva quando o primário falha');
+  ok(!r.includes('**'), 'Resposta sem markdown cru (asteriscos)');
   const { data: registro } = await supabaseAdmin
     .from('mensagens')
     .select('provedor_ia, usou_fallback, tokens_entrada')
@@ -199,14 +208,14 @@ try {
 
   // 9. Falha depois de alterar dados: não repete no outro provedor
   const reservaAntes = reserva.estado.chamadas;
-  primario.programar(chamarTool('pausar_produto', { numero: blusa!.numero }), falhar());
-  r = await enviarEEsperar(mensagem({ texto: 'pausa a #1' }));
+  primario.programar(chamarTools(['pausar_produto', { numero: blusa!.numero }], ['resumo_loja', {}]), falhar());
+  r = await enviarEEsperar(mensagem({ texto: 'tira a blusa da vitrine e me diz quantos produtos ficaram' }));
   const { data: pausada } = await supabaseAdmin.from('produtos').select('ativo').eq('id', blusa!.id).single();
   ok(pausada?.ativo === false && /Feito/.test(r) && reserva.estado.chamadas === reservaAntes, 'Sem retentativa depois de executar uma ação');
 
   // 10. Álbum com legenda: espera as fotos e cria com todas
   primario.limpar();
-  primario.programar(chamarTool('criar_produto', { nome: 'Vestido Midi', preco: 159 }), responderTexto('✅ #2 Vestido Midi'));
+  primario.programar(chamarTool('criar_produto', { nome: 'Vestido Midi', preco: 159 }));
   const antes = enviadas.length;
   await receber([
     { ...foto(), grupoMidia: 'album-1', texto: 'vestido midi 159' },
@@ -228,28 +237,38 @@ try {
 
   // 12. Remover fotos: "deixa só a última"
   primario.limpar();
-  primario.programar(chamarTool('remover_fotos', { numero: 2, manter_ultimas: 1 }), responderTexto('✅ #2 Vestido Midi'));
+  primario.programar(chamarTool('editar_produto', { numero: 2, manter_ultimas_fotos: 1 }));
   await enviarEEsperar(mensagem({ texto: 'deixa só a última foto da #2' }));
   const { data: fotosVestido } = await supabaseAdmin.from('produto_imagens').select('id').eq('loja_id', loja.id).eq('produto_id', vestido!.id);
   ok(fotosVestido?.length === 1, 'Remover fotos mantém só a última enviada');
 
   // 13. IA confirma sem ter feito: recebe o aviso, executa de verdade, e o markdown sai da resposta
+  // e o pedido com duas ações vem no mesmo passo: as duas são confirmadas.
   primario.programar(
-    responderTexto('✅ **Pronto**, cor alterada!'),
-    chamarTool('editar_produto', { numero: 2, cores: ['Vermelho'] }),
-    responderTexto('✅ #2 **Vestido Midi**, cor Vermelho'),
+    responderTexto('✅ Pronto, cor alterada!'),
+    chamarTools(['editar_produto', { numero: 2, cores: ['Vermelho'] }], ['pausar_produto', { numero: 2 }]),
+    responderTexto('✅ Tudo certo!'), // pedido com "e": a IA ganha mais um passo; a confirmação continua vindo do código
   );
-  r = await enviarEEsperar(mensagem({ texto: 'muda a cor da #2 para vermelho' }));
+  r = await enviarEEsperar(mensagem({ texto: 'muda a cor da #2 para vermelho e pausa ela' }));
   const { data: corVestido } = await supabaseAdmin.from('produtos').select('cores').eq('id', vestido!.id).single();
   ok(JSON.stringify(corVestido?.cores) === '["Vermelho"]', 'Confirmação sem ação: a IA é avisada e executa a alteração');
-  ok(r.includes('#2 Vestido Midi') && !r.includes('**'), 'Resposta sem markdown cru (asteriscos)');
+  ok(/Atualizado: #2 Vestido Midi/.test(r) && /Pausado/.test(r) && !/Tudo certo/.test(r), 'Duas ações no mesmo pedido, as duas confirmadas pelo código');
 
   // 14. Se insistir em confirmar sem fazer, o lojista recebe a verdade
   primario.programar(responderTexto('✅ Feito!'), responderTexto('✅ Feito, de verdade!'));
   r = await enviarEEsperar(mensagem({ texto: 'muda a cor da #2 para azul' }));
   ok(/Não consegui fazer essa alteração/.test(r), 'Confirmação inventada nunca chega ao lojista');
 
-  // 15. Limite de uso (429 com prazo, como a cota diária do Gemini): o primário fica pausado pelo prazo pedido
+  // 15. Atalho: comando fixo com código não chama a IA
+  const iaAntes = primario.estado.chamadas + reserva.estado.chamadas;
+  r = await enviarEEsperar(mensagem({ texto: 'Reativa a #2!' }));
+  const { data: vestidoAtivo } = await supabaseAdmin.from('produtos').select('ativo').eq('id', vestido!.id).single();
+  ok(vestidoAtivo?.ativo === true && /De volta na vitrine/.test(r), 'Atalho "reativa a #2" executa direto');
+  ok(primario.estado.chamadas + reserva.estado.chamadas === iaAntes, 'Atalho não gasta chamada de IA');
+  r = await enviarEEsperar(mensagem({ texto: 'muda o preço da #99 para 10' }));
+  ok(/Não encontrei o produto #99/.test(r), 'Atalho com produto inexistente explica o erro');
+
+  // 16. Limite de uso (429 com prazo, como a cota diária do Gemini): o primário fica pausado pelo prazo pedido
   primario.limpar();
   primario.programar(() => {
     throw new APICallError({

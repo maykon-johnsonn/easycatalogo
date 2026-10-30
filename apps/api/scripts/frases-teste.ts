@@ -2,9 +2,13 @@
 // se a IA escolheu a ferramenta e os dados certos. Não altera nada no banco: as ferramentas são simuladas.
 // Uso: pnpm --filter @catalogo/api bot:frases [gemini|groq]      (direcao.md, seção 10)
 // Nos planos gratuitos o limite é por minuto: ao bater nele, o script espera e repete a frase.
+// Usa o mesmo fluxo do bot: atalhos sem IA (⚡) e, no resto, o agente com confirmação pelo código.
+// Para testar outro modelo do Groq: AI_GROQ_MODEL=openai/gpt-oss-20b pnpm --filter @catalogo/api bot:frases groq
 import { readFileSync } from 'node:fs';
-import { generateText, isStepCount, type ToolSet } from 'ai';
-import { instrucoes } from '../src/modules/ai/agent.js';
+import type { ToolSet } from 'ai';
+import { executarAgente } from '../src/modules/ai/agent.js';
+import { reconhecerAtalho } from '../src/modules/ai/atalhos.js';
+import { FERRAMENTAS_QUE_ALTERAM as ALTERAM } from '../src/modules/ai/tools/index.js';
 import { modeloDoProvedor, type Provedor } from '../src/modules/ai/providers.js';
 import { criarTools } from '../src/modules/ai/tools/index.js';
 
@@ -12,13 +16,12 @@ type Caso = {
   frase: string;
   fotos_pendentes?: number;
   /** Simula um produto já em conversa, ex.: { "numero": 1, "nome": "Bolsa de Crochê" }. */
-  ultimo_produto?: { numero: number; nome: string };
+  ultimo_produto?: { numero: number; nome: string; fotos?: number };
   observacao?: string;
   /** "tambem": outras ferramentas que precisam ser chamadas na mesma mensagem (pedidos com várias ações). */
   esperado: { tool?: string; args?: Record<string, unknown>; tambem?: string[]; nenhuma_alteracao?: boolean };
 };
-const casos: Caso[] = JSON.parse(readFileSync(new URL('../test/frases.json', import.meta.url), 'utf8'));
-const ALTERAM = new Set(['criar_produto', 'editar_produto', 'adicionar_fotos', 'remover_fotos', 'definir_foto_principal', 'pausar_produto', 'reativar_produto', 'excluir_produto']);
+const casos: Caso[] = JSON.parse(readFileSync(new URL(process.env.FRASES_ARQUIVO ?? '../test/frases.json', import.meta.url), 'utf8'));
 
 /** Mesmas descrições e schemas das tools reais, mas sem tocar no banco. */
 function toolsSimuladas(chamadas: { tool: string; args: Record<string, unknown> }[]): ToolSet {
@@ -54,7 +57,9 @@ function confere(esperado: unknown, recebido: unknown): boolean {
   return bate(esperado, recebido);
 }
 
-const limiteDeUso = (erro: unknown) => erro instanceof Error && /quota|rate limit|resource.?exhausted|429/i.test(erro.message);
+// Limite por minuto: vale esperar. Limite diário (ex.: "tokens per day"): não adianta, falha direto.
+const limiteDeUso = (erro: unknown) =>
+  erro instanceof Error && /quota|rate limit|resource.?exhausted|429/i.test(erro.message) && !/per day|PerDay/i.test(erro.message);
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function avaliar(caso: Caso, chamadas: { tool: string; args: Record<string, unknown> }[]) {
@@ -88,28 +93,40 @@ for (const p of provedores) {
   let acertos = 0;
   let tokens = 0;
   let tempo = 0;
+  let atalhos = 0;
+  let comIa = 0;
   for (const caso of casos) {
     const chamadas: { tool: string; args: Record<string, unknown> }[] = [];
     let inicio = Date.now();
     let problema: string | null = null;
+    let resposta = '';
+    const atalho = caso.fotos_pendentes ? null : reconhecerAtalho(caso.frase);
+    if (atalho) {
+      chamadas.push({ tool: atalho.tool, args: atalho.args });
+      problema = avaliar(caso, chamadas);
+      atalhos++;
+      if (!problema) acertos++;
+      console.log(`${problema ? '❌' : '⚡'} ${caso.frase}  (atalho, sem IA)${problema ? `\n     → ${problema}` : ''}`);
+      continue;
+    }
     for (let tentativa = 1; ; tentativa++) {
     try {
-      const r = await generateText({
-        model: p.modelo,
-        instructions: instrucoes({
+      const r = await executarAgente(
+        p.modelo,
+        {
           loja: { id: '-', nome: 'Loja Teste', slug: 'loja-teste' },
           operadorId: '-',
           texto: caso.frase,
           historico: [],
           fotosPendentes: caso.fotos_pendentes ?? 0,
           ultimoProduto: caso.ultimo_produto ?? null,
-        }),
-        messages: [{ role: 'user', content: caso.frase }],
-        tools: toolsSimuladas(chamadas),
-        stopWhen: isStepCount(4),
-        maxRetries: 1,
-      });
-      tokens += (r.totalUsage.inputTokens ?? 0) + (r.totalUsage.outputTokens ?? 0);
+        },
+        toolsSimuladas(chamadas),
+        [],
+      );
+      tokens += r.tokensEntrada + r.tokensSaida;
+      resposta = r.texto;
+      comIa++;
       problema = avaliar(caso, chamadas);
       break;
     } catch (erro) {
@@ -127,8 +144,12 @@ for (const p of provedores) {
     tempo += Date.now() - inicio;
     if (!problema) acertos++;
     console.log(`${problema ? '❌' : '✅'} ${caso.frase}${problema ? `\n     → ${problema}` : ''}`);
+    if (problema && chamadas.length) console.log(`     ferramentas: ${JSON.stringify(chamadas)}`);
+    if (problema && resposta) console.log(`     resposta: ${resposta.replace(/\n/g, ' ⏎ ').slice(0, 300)}`);
   }
-  const linha = `${p.provedor} (${p.nomeModelo}): ${acertos}/${casos.length} certas · ${tokens} tokens · ${Math.round(tempo / casos.length)} ms/frase`;
+  const linha =
+    `${p.provedor} (${p.nomeModelo}): ${acertos}/${casos.length} certas · ${atalhos} por atalho · ` +
+    `${tokens} tokens (${Math.round(tokens / Math.max(comIa, 1))}/frase com IA) · ${Math.round(tempo / Math.max(comIa, 1))} ms/frase com IA`;
   resumo.push(linha);
 }
 
