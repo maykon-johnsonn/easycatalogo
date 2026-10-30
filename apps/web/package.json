@@ -10,10 +10,12 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@catalogo/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.118.0",
+    "lucide-react": "^1.64.0",
     "next": "16.4.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "@catalogo/shared": "workspace:*"
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
