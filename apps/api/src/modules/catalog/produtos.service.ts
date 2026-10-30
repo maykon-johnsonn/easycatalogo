@@ -8,7 +8,7 @@ import { erroDoBanco, HttpErro, naoEncontrado } from '../../lib/erros.js';
 const CAMPOS_PRODUTO = `
   id, loja_id, numero, nome, descricao, preco_original, preco_promocional,
   categoria, tamanhos, cores, ativo, criado_em, atualizado_em,
-  imagens:produto_imagens (id, url, ordem)
+  imagens:produto_imagens (id, url, ordem, criado_em)
 `;
 
 export type FiltroProdutos = {

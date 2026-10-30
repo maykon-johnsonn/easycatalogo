@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { produtoCriarSchema, produtoEditarSchema, type ProdutoEditar } from '@catalogo/shared';
 import { env } from '../../../config/env.js';
 import { HttpErro, validar } from '../../../lib/erros.js';
-import { anexarImagensSalvas, MAX_IMAGENS_POR_PRODUTO } from '../../catalog/imagens.service.js';
+import {
+  anexarImagensSalvas,
+  MAX_IMAGENS_POR_PRODUTO,
+  removerImagem,
+  reordenarImagens,
+} from '../../catalog/imagens.service.js';
 import {
   criarProduto,
   editarProduto,
@@ -178,6 +183,60 @@ export function criarTools(ctx: ContextoTools): ToolSet {
             );
           }
           return concluir(atualizado, 'Fotos adicionadas');
+        }),
+    }),
+
+    remover_fotos: tool({
+      description:
+        'Remove fotos de UM produto. Use "posicoes" (1 = primeira foto da vitrine) ou "manter_ultimas" ' +
+        '(ex.: "deixa só a última foto que mandei" = manter_ultimas 1).',
+      inputSchema: z.object({
+        numero: numeroOpcional,
+        posicoes: z.array(z.number().int().positive()).optional().describe('Posições das fotos a remover, na ordem da vitrine'),
+        manter_ultimas: z.number().int().positive().optional().describe('Mantém só as N fotos enviadas mais recentemente'),
+      }),
+      execute: ({ numero, posicoes, manter_ultimas }) =>
+        seguro(async () => {
+          const usaPosicoes = Boolean(posicoes?.length);
+          if (usaPosicoes === (manter_ultimas != null)) {
+            throw new HttpErro(400, 'Informe "posicoes" ou "manter_ultimas" (um dos dois)');
+          }
+          const produto = await alvo(numero);
+          const fotos = produto.imagens;
+          let remover: typeof fotos;
+          if (posicoes?.length) {
+            const invalida = posicoes.find((p) => p > fotos.length);
+            if (invalida) throw new HttpErro(400, `O produto tem ${fotos.length} foto(s); não existe a posição ${invalida}`);
+            remover = fotos.filter((_, i) => posicoes.includes(i + 1));
+          } else {
+            const recentes = [...fotos].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+            remover = recentes.slice(manter_ultimas);
+          }
+          if (!remover.length) throw new HttpErro(400, `Nada a remover: o produto tem ${fotos.length} foto(s)`);
+          for (const foto of remover) await removerImagem(lojaId, foto.id);
+          return concluir(await obterProduto(lojaId, produto.id), `${remover.length} foto(s) removida(s)`);
+        }),
+    }),
+
+    definir_foto_principal: tool({
+      description: 'Escolhe qual foto aparece primeiro (capa) na vitrine.',
+      inputSchema: z.object({
+        numero: numeroOpcional,
+        posicao: z.number().int().positive().optional().describe('Posição atual da foto (1 = primeira)'),
+        ultima_enviada: z.boolean().optional().describe('true para usar a foto enviada mais recentemente'),
+      }),
+      execute: ({ numero, posicao, ultima_enviada }) =>
+        seguro(async () => {
+          const produto = await alvo(numero);
+          const fotos = produto.imagens;
+          const escolhida = ultima_enviada
+            ? [...fotos].sort((a, b) => b.criado_em.localeCompare(a.criado_em))[0]
+            : posicao != null
+              ? fotos[posicao - 1]
+              : undefined;
+          if (!escolhida) throw new HttpErro(400, `Escolha uma foto de 1 a ${fotos.length}`);
+          const ordem = [escolhida.id, ...fotos.filter((f) => f.id !== escolhida.id).map((f) => f.id)];
+          return concluir(await reordenarImagens(lojaId, produto.id, ordem), 'Foto principal trocada');
         }),
     }),
 

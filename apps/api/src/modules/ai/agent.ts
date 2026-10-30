@@ -27,8 +27,12 @@ export function instrucoes(e: EntradaAgente) {
 Seu trabalho: cadastrar e gerenciar os produtos do catálogo usando as ferramentas. Nada além disso.
 
 Regras:
-- Responda em português do Brasil, curto e simpático, em texto simples (sem markdown, sem tabelas). Pode usar poucos emojis.
+- Responda em português do Brasil, curto e direto, sem cumprimentar. Texto simples: nada de markdown (sem asteriscos, sem negrito), sem tabelas. Pode usar poucos emojis.
 - Use as ferramentas para qualquer ação. Nunca diga que fez algo sem ter chamado a ferramenta e recebido sucesso.
+- "Ela", "dele", "essa", "o mesmo" ou um pedido sem produto citado se referem ao último produto da conversa (abaixo): chame a ferramenta direto, sem o número e sem buscar.
+- Um pedido pode ter várias ações ("tira a foto antiga e muda a cor"): chame uma ferramenta para cada uma, na mesma resposta.
+- Fotos: "deixa só a última foto" = remover_fotos com manter_ultimas 1; "tira a 2ª foto" = remover_fotos com posicoes [2]; "essa foto como capa" = definir_foto_principal.
+- Nunca sugira excluir e recadastrar um produto para contornar algo. Se não houver ferramenta para o pedido, diga que pode ser feito pelo painel.
 - Para cadastrar, o mínimo é nome e preço. Se faltar o preço, pergunte. Nunca invente preço, tamanho ou cor.
 - Valores: "59,90" ou "59 e 90" = 59.9. "de 80 por 60" = preço 80 e promocional 60.
 - Ao criar ou editar, confirme com uma linha no formato "✅ #12 Blusa Canelada, R$ 59,90, P/M/G" e o link do produto.
@@ -44,22 +48,55 @@ Situação agora:
 - Último produto da conversa: ${e.ultimoProduto ? `#${e.ultimoProduto.numero} ${e.ultimoProduto.nome}` : 'nenhum'}`;
 }
 
+/** O Telegram (e o WhatsApp) mostram markdown cru: "**Vermelho**" chegaria com os asteriscos. */
+export function limparTexto(texto: string) {
+  return texto
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/[ \t]+$/gm, '')
+    .trim();
+}
+
+/** Resposta com cara de confirmação ("✅") sem nenhuma ferramenta executada: a IA inventou a ação. */
+const confirmouSemFazer = (texto: string, efeitos: string[]) => !efeitos.length && texto.includes('✅');
+
+const LEMBRETE_SEM_ACAO =
+  '[aviso do sistema] Sua resposta confirma uma alteração, mas nenhuma ferramenta foi chamada, então nada mudou. ' +
+  'Se o lojista pediu uma alteração, chame a ferramenta agora. Se não, responda sem usar ✅.';
+
 export async function responder(e: EntradaAgente): Promise<RespostaAgente> {
   const ctx: ContextoTools = { lojaId: e.loja.id, lojaSlug: e.loja.slug, operadorId: e.operadorId, efeitos: [] };
   const tools = criarTools(ctx);
 
   try {
     const r = await comRoteador(async ({ modelo }) => {
-      try {
-        return await generateText({
+      const gerar = (messages: ModelMessage[]) =>
+        generateText({
           model: modelo,
           instructions: instrucoes(e),
-          messages: [...e.historico, { role: 'user', content: e.texto }],
+          messages,
           tools,
           stopWhen: isStepCount(6),
           maxRetries: 0, // quem refaz em outro provedor é o roteador
           timeout: 60_000,
         });
+      try {
+        const mensagens: ModelMessage[] = [...e.historico, { role: 'user', content: e.texto }];
+        const primeira = await gerar(mensagens);
+        if (!confirmouSemFazer(primeira.text, ctx.efeitos)) return primeira;
+        // Uma chance de corrigir: a IA vê a própria resposta e o aviso.
+        const segunda = await gerar([...mensagens, ...primeira.response.messages, { role: 'user', content: LEMBRETE_SEM_ACAO }]);
+        const somar = (a?: number, b?: number) => (a ?? 0) + (b ?? 0);
+        return {
+          text: confirmouSemFazer(segunda.text, ctx.efeitos)
+            ? 'Não consegui fazer essa alteração. Pode repetir o pedido com o código do produto? Ex.: "muda a cor da #1 para vermelho".'
+            : segunda.text,
+          totalUsage: {
+            inputTokens: somar(primeira.totalUsage.inputTokens, segunda.totalUsage.inputTokens),
+            outputTokens: somar(primeira.totalUsage.outputTokens, segunda.totalUsage.outputTokens),
+          },
+        };
       } catch (erro) {
         if (ctx.efeitos.length) throw new FalhaAposEfeitos(erro);
         throw erro;
@@ -67,7 +104,7 @@ export async function responder(e: EntradaAgente): Promise<RespostaAgente> {
     });
 
     const texto =
-      r.resultado.text.trim() ||
+      limparTexto(r.resultado.text) ||
       (ctx.efeitos.length
         ? `✅ Pronto:\n${ctx.efeitos.join('\n')}`
         : 'Não consegui entender. Pode repetir de outro jeito? Ex.: "Blusa canelada, 59,90, P M G, preta".');

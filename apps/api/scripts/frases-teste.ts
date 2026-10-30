@@ -1,6 +1,6 @@
 // Roda o conjunto de frases (test/frases.json) contra CADA provedor de IA configurado e compara
 // se a IA escolheu a ferramenta e os dados certos. Não altera nada no banco: as ferramentas são simuladas.
-// Uso: pnpm --filter @catalogo/api bot:frases      (direcao.md, seção 10)
+// Uso: pnpm --filter @catalogo/api bot:frases [gemini|groq]      (direcao.md, seção 10)
 // Nos planos gratuitos o limite é por minuto: ao bater nele, o script espera e repete a frase.
 import { readFileSync } from 'node:fs';
 import { generateText, isStepCount, type ToolSet } from 'ai';
@@ -11,11 +11,14 @@ import { criarTools } from '../src/modules/ai/tools/index.js';
 type Caso = {
   frase: string;
   fotos_pendentes?: number;
+  /** Simula um produto já em conversa, ex.: { "numero": 1, "nome": "Bolsa de Crochê" }. */
+  ultimo_produto?: { numero: number; nome: string };
   observacao?: string;
-  esperado: { tool?: string; args?: Record<string, unknown>; nenhuma_alteracao?: boolean };
+  /** "tambem": outras ferramentas que precisam ser chamadas na mesma mensagem (pedidos com várias ações). */
+  esperado: { tool?: string; args?: Record<string, unknown>; tambem?: string[]; nenhuma_alteracao?: boolean };
 };
 const casos: Caso[] = JSON.parse(readFileSync(new URL('../test/frases.json', import.meta.url), 'utf8'));
-const ALTERAM = new Set(['criar_produto', 'editar_produto', 'adicionar_fotos', 'pausar_produto', 'reativar_produto', 'excluir_produto']);
+const ALTERAM = new Set(['criar_produto', 'editar_produto', 'adicionar_fotos', 'remover_fotos', 'definir_foto_principal', 'pausar_produto', 'reativar_produto', 'excluir_produto']);
 
 /** Mesmas descrições e schemas das tools reais, mas sem tocar no banco. */
 function toolsSimuladas(chamadas: { tool: string; args: Record<string, unknown> }[]): ToolSet {
@@ -60,16 +63,20 @@ function avaliar(caso: Caso, chamadas: { tool: string; args: Record<string, unkn
     const alterou = chamadas.find((c) => ALTERAM.has(c.tool));
     return alterou ? `chamou ${alterou.tool} (não devia alterar nada)` : null;
   }
-  const primeira = chamadas[0];
-  if (!primeira) return `nenhuma ferramenta (esperado ${esperado.tool})`;
-  if (primeira.tool !== esperado.tool) return `chamou ${primeira.tool} (esperado ${esperado.tool})`;
+  const principal = chamadas.find((c) => c.tool === esperado.tool);
+  if (!principal) return `não chamou ${esperado.tool} (chamou: ${chamadas.map((c) => c.tool).join(", ") || "nenhuma"})`;
   for (const [campo, valor] of Object.entries(esperado.args ?? {})) {
-    if (!confere(valor, primeira.args[campo])) return `${campo}=${JSON.stringify(primeira.args[campo])} (esperado ${JSON.stringify(valor)})`;
+    if (!confere(valor, principal.args[campo])) return `${campo}=${JSON.stringify(principal.args[campo])} (esperado ${JSON.stringify(valor)})`;
   }
-  return null;
+  const faltou = (esperado.tambem ?? []).find((t) => !chamadas.some((c) => c.tool === t));
+  return faltou ? `não chamou ${faltou}` : null;
 }
 
-const provedores = (['gemini', 'groq'] as Provedor[]).map(modeloDoProvedor).filter((m) => m !== null);
+const so = process.argv[2] as Provedor | undefined; // ex.: bot:frases groq
+const provedores = (['gemini', 'groq'] as Provedor[])
+  .filter((p) => !so || p === so)
+  .map(modeloDoProvedor)
+  .filter((m) => m !== null);
 if (!provedores.length) {
   console.log('Nenhum provedor de IA configurado. Preencha GOOGLE_GENERATIVE_AI_API_KEY e/ou GROQ_API_KEY no apps/api/.env.');
   process.exit(0);
@@ -95,7 +102,7 @@ for (const p of provedores) {
           texto: caso.frase,
           historico: [],
           fotosPendentes: caso.fotos_pendentes ?? 0,
-          ultimoProduto: null,
+          ultimoProduto: caso.ultimo_produto ?? null,
         }),
         messages: [{ role: 'user', content: caso.frase }],
         tools: toolsSimuladas(chamadas),

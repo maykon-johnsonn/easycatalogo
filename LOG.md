@@ -5,6 +5,23 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 2: fotos pelo bot e fim das confirmações inventadas
+
+- **O que foi feito:**
+  - **Origem:** no primeiro teste real no Telegram, o lojista pediu "deixe só a foto enviada por último, exclua a outra, e coloque a cor só vermelho". A IA respondeu "✅" sem chamar nenhuma ferramenta (a cor continuou "Bege"), sugeriu excluir e recadastrar o produto e mostrou `**` cru.
+  - **Tools novas:** `remover_fotos` (por posição ou `manter_ultimas`, pela data de envio) e `definir_foto_principal`. O select de produtos passou a trazer `criado_em` das imagens.
+  - **Guarda de honestidade** (`agent.ts`): se a resposta tem ✅ e nenhuma ferramenta rodou, a IA recebe um aviso e tem mais uma chance. Se insistir, o lojista recebe "Não consegui fazer essa alteração...".
+  - `limparTexto` tira o markdown (`**`, `__`, `#` de título) antes de enviar.
+  - **Instruções:**
+    - direto, sem cumprimentar;
+    - uma ferramenta por ação quando o pedido tem várias;
+    - "ela/essa" = último produto da conversa;
+    - nunca sugerir excluir e recadastrar.
+  - **Frases de teste:** 20 casos, incluindo o caso real; o esperado aceita `ultimo_produto` e `tambem` (várias ferramentas); dá para rodar um provedor só (`bot:frases groq`). **Groq: 20/20.**
+  - **`teste-bot`:** 24/24, com remoção de fotos, guarda de honestidade e limpeza de markdown.
+- **Por quê:** uma confirmação falsa é o pior erro possível do bot: o lojista acha que o catálogo mudou e o cliente vê outra coisa.
+- **Pendências:** o lojista refazer o teste no Telegram.
+
 ## 2026-10-30: Fase 2: chaves de IA e Telegram conectadas, Groq como primário
 
 - **O que foi feito:**

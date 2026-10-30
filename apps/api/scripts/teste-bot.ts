@@ -216,7 +216,7 @@ try {
   while (enviadas.length === antes && Date.now() < fim) await esperar(100);
   const { data: vestido } = await supabaseAdmin
     .from('produtos')
-    .select('nome, imagens:produto_imagens (id)')
+    .select('id, nome, imagens:produto_imagens (id)')
     .eq('loja_id', loja.id)
     .eq('numero', 2)
     .maybeSingle();
@@ -226,7 +226,30 @@ try {
   r = await enviarEEsperar(mensagem({ tipo: 'audio', baixarMidia: async () => ({ conteudo: Buffer.from('x'), mimeType: 'audio/ogg' }) }));
   ok(/Não consegui entender o áudio/.test(r), 'Falha na transcrição gera resposta (nenhuma mensagem fica sem resposta)');
 
-  // 12. Limite de uso (429 com prazo, como a cota diária do Gemini): o primário fica pausado pelo prazo pedido
+  // 12. Remover fotos: "deixa só a última"
+  primario.limpar();
+  primario.programar(chamarTool('remover_fotos', { numero: 2, manter_ultimas: 1 }), responderTexto('✅ #2 Vestido Midi'));
+  await enviarEEsperar(mensagem({ texto: 'deixa só a última foto da #2' }));
+  const { data: fotosVestido } = await supabaseAdmin.from('produto_imagens').select('id').eq('loja_id', loja.id).eq('produto_id', vestido!.id);
+  ok(fotosVestido?.length === 1, 'Remover fotos mantém só a última enviada');
+
+  // 13. IA confirma sem ter feito: recebe o aviso, executa de verdade, e o markdown sai da resposta
+  primario.programar(
+    responderTexto('✅ **Pronto**, cor alterada!'),
+    chamarTool('editar_produto', { numero: 2, cores: ['Vermelho'] }),
+    responderTexto('✅ #2 **Vestido Midi**, cor Vermelho'),
+  );
+  r = await enviarEEsperar(mensagem({ texto: 'muda a cor da #2 para vermelho' }));
+  const { data: corVestido } = await supabaseAdmin.from('produtos').select('cores').eq('id', vestido!.id).single();
+  ok(JSON.stringify(corVestido?.cores) === '["Vermelho"]', 'Confirmação sem ação: a IA é avisada e executa a alteração');
+  ok(r.includes('#2 Vestido Midi') && !r.includes('**'), 'Resposta sem markdown cru (asteriscos)');
+
+  // 14. Se insistir em confirmar sem fazer, o lojista recebe a verdade
+  primario.programar(responderTexto('✅ Feito!'), responderTexto('✅ Feito, de verdade!'));
+  r = await enviarEEsperar(mensagem({ texto: 'muda a cor da #2 para azul' }));
+  ok(/Não consegui fazer essa alteração/.test(r), 'Confirmação inventada nunca chega ao lojista');
+
+  // 15. Limite de uso (429 com prazo, como a cota diária do Gemini): o primário fica pausado pelo prazo pedido
   primario.limpar();
   primario.programar(() => {
     throw new APICallError({
