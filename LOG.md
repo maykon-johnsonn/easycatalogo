@@ -5,6 +5,12 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 0, Passo 3: Supabase CLI e storage de desenvolvimento
+
+- **O que foi feito:** Supabase CLI instalada como dependência do projeto. Rodado `supabase init` (`supabase/config.toml`) e adicionados os scripts `db:status`, `db:new`, `db:push` e `db:types`. Criada a migration do bucket público `catalogo-produtos` (aceita só WebP, até 2 MB). Variáveis `S3_*` apontadas para o endpoint S3 do Supabase Storage.
+- **Por quê:** gerenciar o banco por migrations versionadas, pela CLI, em vez de mudanças manuais no painel. O MinIO ainda não está pronto, e o Supabase Storage é S3-compatible, então o mesmo código serve. Para trocar para o MinIO depois, basta mudar as `S3_*` no `.env`.
+- **Pendências:** login e vínculo da CLI (`supabase login` / `supabase link`), gerar as chaves S3 do Storage e rodar `pnpm db:push`.
+
 ## 2026-10-30: Fase 0, Passo 2: esqueleto do monorepo e migration da Fase 1
 
 - **O que foi feito:**

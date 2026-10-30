@@ -346,6 +346,12 @@ LOG.md                        # Diário de desenvolvimento (seção 10)
 - Commits pequenos e frequentes: um commit por passo concluído.
 - Repositório remoto privado (GitHub) como backup a partir da Fase 0.
 
+### Banco de Dados (Supabase CLI)
+
+- Toda mudança de schema é uma migration em `supabase/migrations/`, criada com `pnpm db:new <nome>` e aplicada com `pnpm db:push`. **Nunca alterar tabelas pelo painel do Supabase**, para o repositório continuar sendo a fonte da verdade.
+- Depois de cada migration, rodar `pnpm db:types` para regenerar os tipos TypeScript do banco.
+- A CLI fica como dependência do projeto (`pnpm exec supabase`). O login e o vínculo com o projeto são feitos uma vez por máquina.
+
 ### Diário de Desenvolvimento (`LOG.md`)
 
 Todo passo relevante (decisão, funcionalidade, mudança de estrutura, correção importante, troca de ferramenta) gera uma entrada no `LOG.md`, **no mesmo commit da mudança**. As entradas mais recentes ficam no topo.
