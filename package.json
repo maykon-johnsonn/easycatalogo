@@ -11,9 +11,9 @@
     "dev:web": "pnpm --filter @catalogo/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "db:status": "supabase migration list",
+    "db:status": "supabase migration list --linked",
     "db:new": "supabase migration new",
-    "db:push": "supabase db push",
+    "db:push": "supabase db push --linked",
     "db:types": "supabase gen types typescript --linked --schema public > packages/shared/src/database.types.ts"
   },
   "devDependencies": {

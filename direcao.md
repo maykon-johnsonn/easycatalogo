@@ -75,7 +75,7 @@ Para que essa troca seja barata, **o núcleo do sistema não conhece o canal**. 
 | Bot Telegram | **grammY** | Biblioteca TS-first, suporta webhook |
 | Gateway WhatsApp (depois) | Evolution API | Ver riscos na seção 12 |
 | Imagens | `sharp` | Processamento em memória antes do upload |
-| Storage | MinIO via `@aws-sdk/client-s3` (`forcePathStyle: true`) | Isolado atrás de uma interface `StorageService` |
+| Storage | Driver por `STORAGE_DRIVER`: `supabase` (Supabase Storage, dev) ou `s3` (MinIO via `@aws-sdk/client-s3`, `forcePathStyle: true`) | Isolado atrás da interface `StorageDriver`; trocar é só mudar o `.env` |
 | Banco & Auth | Supabase (`@supabase/supabase-js`), PostgreSQL + JSONB | Auth também atende o painel |
 | IA | Vercel AI SDK (`ai`) + `@ai-sdk/google` (Gemini Flash) + `@ai-sdk/groq`, validação com `zod` | Custo baixo ou gratuito na fase de testes e primeiros clientes. Ver a seção 4.1. |
 | Transcrição | Groq (`whisper-large-v3`), com Gemini como fallback | Mais barato e mais rápido para áudios curtos |

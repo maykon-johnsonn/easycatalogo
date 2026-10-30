@@ -5,6 +5,26 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 0, Passo 4: banco aplicado, segurança revisada e storage funcionando
+
+- **O que foi feito:**
+  - Migrations da Fase 1 e do bucket aplicadas no projeto `catalogo` via `pnpm db:push`. Tipos gerados em `packages/shared/src/database.types.ts`.
+  - O `supabase db advisors` apontou dois pontos, corrigidos na migration `20261030000300_ajustes_advisors.sql`:
+    - Revogado o EXECUTE de `public.rls_auto_enable()`, a função do Supabase que liga o RLS automaticamente, para anon/authenticated.
+    - Políticas de SELECT consolidadas em uma por papel, porque políticas duplicadas pesam no desempenho.
+  - O advisors agora volta sem nenhum aviso.
+  - Storage com dois drivers (`STORAGE_DRIVER=supabase|s3`). Conversão WebP com Sharp: máx. 1200px, qualidade 80, respeitando a rotação EXIF das fotos de celular.
+  - Chave publicável configurada no `apps/web/.env.local`.
+- **Testes feitos (dados apagados depois):**
+  - Numeração por loja (1, 2, 3).
+  - CHECK de promoção maior que o preço barrando o insert.
+  - Vitrine anônima vendo só produtos ativos.
+  - Insert anônimo negado.
+  - Exclusão em cascata.
+  - Upload real: PNG 3000×2000 (83 KB) virou WebP 1200×800 (1,8 KB), e a exclusão foi confirmada no bucket.
+- **Por quê:** o Supabase Storage aceita a secret key que a API já usa, então o desenvolvimento não precisa de chaves S3 extras. O driver `s3` fica pronto para o MinIO.
+- **Observação:** depois de excluir uma imagem, a URL pública ainda responde por um tempo (cache da CDN). Não é problema, porque cada imagem nova recebe um nome único (UUID).
+
 ## 2026-10-30: Fase 0, Passo 3: Supabase CLI e storage de desenvolvimento
 
 - **O que foi feito:** Supabase CLI instalada como dependência do projeto. Rodado `supabase init` (`supabase/config.toml`) e adicionados os scripts `db:status`, `db:new`, `db:push` e `db:types`. Criada a migration do bucket público `catalogo-produtos` (aceita só WebP, até 2 MB). Variáveis `S3_*` apontadas para o endpoint S3 do Supabase Storage.
