@@ -458,6 +458,21 @@ Começa **apenas quando os critérios de validação abaixo forem atingidos no T
 - Pagamento online e carrinho.
 - Cobrança/assinatura dos lojistas e autocadastro de lojas.
 
+### Antes de ter clientes reais (obrigatório)
+
+- [ ] Desligar o cadastro público no Supabase ("Allow new users to sign up") e configurar Site URL / Redirect URLs com o domínio real.
+- [ ] Serviço de e-mail próprio (SMTP) no Supabase. O envio gratuito tem limite baixo por hora e afeta convites e recuperação de senha.
+- [ ] Gerar uma nova secret key do Supabase (a atual passou pelo chat) e desativar a antiga.
+- [ ] Trocar o storage para o MinIO (`STORAGE_DRIVER=s3`) e liberar o host dele em `images.remotePatterns` no `next.config.ts`.
+- [ ] Definir `NEXT_PUBLIC_SITE_URL` e `PUBLIC_WEB_URL` com o domínio real, para os links e previews do WhatsApp.
+
+### Melhorias pós-MVP (revisar depois da validação)
+
+- **SEO:** a vitrine responde "Página não encontrada" com status 200 (com `noindex`), por causa do streaming. Avaliar status 404 real, sitemap e `robots.txt`.
+- **Navegação instantânea nas áreas restritas:** o Next mostra em desenvolvimento o aviso "Could not validate instant navigation", porque o conteúdo depende da sessão no navegador. Avaliar sessão em cookie e renderização no servidor.
+- **Desempenho da administração:** a lista de lojas soma os produtos em memória. Trocar por view/RPC quando houver milhares de produtos.
+- **Atualização imediata da vitrine:** hoje o cache dura poucos segundos. Avaliar invalidação sob demanda (a API avisa o Next ao salvar).
+
 ---
 
 ## 12. Riscos e Pontos de Atenção

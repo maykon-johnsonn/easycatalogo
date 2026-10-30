@@ -5,6 +5,45 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 1 concluída e pendências organizadas
+
+- **O que foi feito:** vitrine aprovada e branch `feat/vitrine` juntada na `main`. As pendências espalhadas pelo log foram reunidas no `direcao.md` (seção 11) em duas listas: "Antes de ter clientes reais" e "Melhorias pós-MVP".
+- **Por quê:** os pontos de revisão ficam para depois da validação do MVP, sem se perderem no histórico.
+
+## 2026-10-30: Fase 1, Passo 3: vitrine pública
+
+- **O que foi feito (branch `feat/vitrine`):**
+  - **Página da loja** `/{slug}`:
+    - grade de produtos com foto, preço e selo de desconto;
+    - filtro por categoria e busca por nome ou `#número`;
+    - botão "Falar com a loja".
+  - **Página do produto** `/{slug}/p/{numero}`:
+    - galeria (deslizar no celular, setas e miniaturas no computador);
+    - escolha de tamanho e cor;
+    - botão **"Pedir no WhatsApp"**, que abre a conversa com nome, código, opções escolhidas, preço e link do produto;
+    - "Mais em {categoria}".
+  - **Preview no WhatsApp:** título, descrição e imagem em JPEG. Produto usa a foto de capa inteira, sem cortar. Loja ou produto sem foto usa um cartão com o nome.
+  - Telas de carregamento e de "página não encontrada". Loja desativada e produto pausado ou excluído caem nessa tela.
+  - Nova variável `NEXT_PUBLIC_SITE_URL` (links absolutos e previews).
+- **Por quê:** é o que o cliente final vê e o que o lojista compartilha. Fecha o protótipo da Fase 1: cadastro no painel → link → pedido no WhatsApp.
+- **Decisões:**
+  - Renderizada no servidor com a chave publicável. O RLS garante que só aparece loja ativa e produto ativo. A secret key não é usada na vitrine.
+  - Uma única leitura por loja (cache de poucos segundos), usada pela página, pelos metadados e pelo preview. Uma alteração no painel aparece na vitrine quase na hora.
+  - Imagens otimizadas pelo Next (tamanho certo para cada tela). O host do storage está liberado no `next.config.ts`; incluir o do MinIO quando trocarmos.
+  - O pacote `shared` passou a importar com extensão `.ts` (`rewriteRelativeImportExtensions`). O Turbopack não resolvia os imports `.js` quando a vitrine começou a usar código do `shared`, e não só tipos.
+  - O `.env.example` do web não estava no Git: o `.gitignore` criado pelo Next ignorava todo `.env*`. Corrigido.
+- **Testes:**
+  - Loja temporária com 4 produtos (um pausado) e fotos reais. Verificados:
+    - produto pausado não aparece;
+    - filtro, busca por nome sem acento e busca por `#2`;
+    - metadados com o user-agent do WhatsApp;
+    - imagens de preview (conferidas visualmente);
+    - link `wa.me`;
+    - 404 de loja inexistente e de produto pausado.
+  - Typecheck, lint, build de produção e teste de integração da API passando. A loja temporária e as fotos foram apagadas.
+- **Pendências:**
+  - "Página não encontrada" responde com status 200 (com `noindex`), porque a página é enviada em partes (streaming). Não afeta o uso. Rever junto com SEO.
+
 ## 2026-10-30: Ajustes após o primeiro teste do painel
 
 - **O que foi feito:**
