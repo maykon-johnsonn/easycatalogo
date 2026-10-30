@@ -59,8 +59,9 @@ Para que essa troca seja barata, **o núcleo do sistema não conhece o canal**. 
                                       └── Banco & Auth: Supabase (PostgreSQL + RLS)
 
 [ App Web: Next.js (App Router) + Tailwind ]
-   ├── Vitrine pública:  /{slug}  e  /{slug}/p/{numero}   (SSR + Open Graph)
-   └── Painel Admin:     /admin/...                        (Supabase Auth)
+   ├── Vitrine pública:      /{slug}  e  /{slug}/p/{numero}   (SSR + Open Graph)
+   ├── Painel do lojista:    /painel/{slug}/...               (Supabase Auth, só membros da loja)
+   └── Administração geral:  /plataforma/...                  (Supabase Auth, só admins da plataforma)
 ```
 
 ---
@@ -277,20 +278,40 @@ Todas as tools recebem o `loja_id` do contexto do operador (nunca da IA) e chama
 
 ---
 
-## 8. Painel Administrativo
+## 8. Painéis e Níveis de Acesso
 
-Vive em `apps/web` em `/admin`, com login pelo Supabase Auth (e-mail com magic link).
+O sistema tem **três áreas separadas** no app web, todas com login pelo Supabase Auth:
 
-- **Leituras:** direto do Supabase com o RLS de `loja_membros`.
-- **Escritas:** pela API backend (`/admin-api/*`), autenticadas com o JWT do Supabase, chamando os **mesmos serviços de catálogo** usados pelas tools. Isso garante as mesmas regras (conversão de imagem, confirmação de lote, validações).
+| Área | Rota web | Quem acessa | Rotas da API |
+|---|---|---|---|
+| Vitrine pública | `/{slug}` | Qualquer pessoa (só lojas e produtos ativos) | Leitura direta do Supabase com RLS |
+| Painel do lojista | `/painel/{slug}/...` | Membros da loja (`loja_membros`) | `/painel/lojas/:lojaId/...` |
+| Administração geral | `/plataforma/...` | Admins da plataforma (`plataforma_admins`) | `/plataforma/...` |
 
-Telas do MVP:
+**Isolamento entre lojas:** toda rota `/painel/lojas/:lojaId/...` passa pela verificação `exigirAcessoLoja`. Um lojista que tenta acessar outra loja recebe 404, a mesma resposta de "não existe", para não revelar quais lojas existem. Além disso, cada serviço filtra por `loja_id`, como segunda barreira.
 
-- Lista de produtos (busca, filtro por categoria e status)
-- Criar/editar produto (upload e reordenação de fotos)
-- Ações em lote com tela de prévia e confirmação
+**Administração geral (dono da plataforma):**
+- Vê métricas gerais: lojas (total, ativas, novas em 30 dias), produtos (total, ativos, novos em 30 dias) e usuários de painel.
+- Lista todas as lojas com quantidade de produtos, membros e última atividade.
+- Cria lojas novas. O dono é convidado por e-mail, ou vinculado se já tiver conta.
+- Ativa e desativa lojas. Uma loja desativada some da vitrine.
+- Acessa o painel de qualquer loja, para dar suporte.
+- O acesso é concedido só pelo terminal: `pnpm --filter @catalogo/api admin:promover <email>`. Nenhuma rota da API cria administradores.
+
+**Escritas** sempre pela API, chamando os **mesmos serviços de catálogo** que as tools do bot vão usar. **Leituras** do painel também pela API. A vitrine lê direto do Supabase com RLS.
+
+Telas do painel do lojista no MVP:
+
+- Lista de produtos (busca por nome ou `#número`, filtro por categoria e status)
+- Criar/editar produto (upload e reordenação de fotos, até 8 por produto)
 - Configurações da loja (nome, slug, telefone de pedidos)
-- Operadores do bot (vincular contas Telegram/WhatsApp)
+- Ações em lote com tela de prévia e confirmação (Fase 3)
+- Operadores do bot (Fase 2)
+
+Telas da administração geral no MVP:
+
+- Resumo com as métricas
+- Lista de lojas, criação de loja e ativação/desativação
 
 ---
 
@@ -301,8 +322,8 @@ apps/
 ├── api/src/
 │   ├── config/
 │   │   ├── env.ts            # Schema Zod das variáveis de ambiente
-│   │   ├── storage.ts        # S3Client apontando para o MinIO
 │   │   └── supabase.ts       # Supabase client (secret key)
+│   ├── lib/erros.ts          # HttpErro, validação Zod, tradução de erros do Postgres
 │   ├── modules/
 │   │   ├── channels/
 │   │   │   ├── types.ts      # InboundMessage, ChannelAdapter
@@ -316,15 +337,21 @@ apps/
 │   │   │   ├── tools/        # Tools (Zod) → serviços de catalog
 │   │   │   └── transcricao.ts
 │   │   ├── catalog/          # Regras de negócio de produtos e ações em lote
-│   │   ├── storage/          # Sharp + upload/exclusão no MinIO
-│   │   ├── store/            # Lojas e operadores
-│   │   └── admin-api/        # Rotas REST usadas pelo painel
+│   │   ├── storage/          # Sharp + drivers supabase/s3
+│   │   ├── store/            # Lojas, autenticação e controle de acesso
+│   │   ├── painel/           # Rotas REST do painel do lojista
+│   │   └── plataforma/       # Rotas e métricas da administração geral
 │   ├── app.ts
 │   └── server.ts
+├── api/scripts/
+│   ├── promover-admin.ts     # Concede acesso de admin da plataforma
+│   └── teste-integracao.ts   # Teste ponta a ponta contra o Supabase
 └── web/app/
     ├── [slug]/               # Vitrine da loja
     │   └── p/[numero]/       # Página do produto (Open Graph)
-    └── admin/                # Painel administrativo
+    ├── painel/[slug]/        # Painel do lojista
+    ├── plataforma/           # Administração geral
+    └── entrar/               # Login
 packages/
 └── shared/                   # Schemas Zod e tipos compartilhados
 direcao.md                    # Este documento (direção do projeto)

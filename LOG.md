@@ -5,6 +5,36 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 1, Passo 1: API do painel do lojista e da administração geral
+
+- **O que foi feito:**
+  - Três níveis de acesso:
+    - vitrine pública;
+    - painel do lojista (`/painel/lojas/:lojaId/...`, só membros da loja);
+    - administração geral (`/plataforma/...`, só admins).
+  - Tabela `plataforma_admins` e script `admin:promover <email>` para conceder o acesso geral.
+  - Slugs reservados ampliados: `painel`, `plataforma`, `entrar`, `sair`.
+  - Função `usuario_id_por_email` (só service_role), para vincular ou convidar o dono ao criar uma loja.
+  - Serviços de catálogo:
+    - listar, com busca por nome ou `#número`, filtro por categoria e status;
+    - criar, editar, excluir (lógico) e listar categorias;
+    - fotos: enviar (até 8, convertidas para WebP), reordenar e remover.
+  - Serviços da administração geral:
+    - métricas (lojas, produtos, usuários, novos em 30 dias);
+    - lista de lojas com contagem de produtos, membros e última atividade;
+    - criar loja convidando o dono por e-mail;
+    - ativar e desativar loja.
+  - Autenticação por JWT do Supabase (`getClaims`). Erros do Postgres traduzidos em mensagens claras (ex.: promoção maior que o preço vira 400).
+  - Teste de integração `pnpm --filter @catalogo/api teste:integracao`: 26 verificações contra o Supabase real, que apagam os dados no fim.
+- **Por quê:** cada lojista precisa acessar só o próprio painel e catálogo, e o dono da plataforma precisa acompanhar quantos clientes usam o sistema.
+- **Decisões:**
+  - Acesso a outra loja responde 404, e não 403, para não revelar quais lojas existem.
+  - O admin da plataforma pode abrir o painel de qualquer loja, para dar suporte.
+  - Admins só são criados pelo terminal. Não há rota para isso, o que reduz a superfície de ataque.
+  - Painel web em `/painel/{slug}` e administração em `/plataforma`. Substitui o `/admin` do plano original.
+  - Listagem de lojas agrega a contagem de produtos em memória (suficiente no MVP; virar view/RPC quando crescer).
+- **Pendências:** promover o seu e-mail a admin. Fase 1, Passo 2: login e telas do painel no app web.
+
 ## 2026-10-30: Fase 0, Passo 4: banco aplicado, segurança revisada e storage funcionando
 
 - **O que foi feito:**

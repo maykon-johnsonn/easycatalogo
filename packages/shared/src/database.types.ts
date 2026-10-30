@@ -76,6 +76,21 @@ export type Database = {
         }
         Relationships: []
       }
+      plataforma_admins: {
+        Row: {
+          criado_em: string
+          user_id: string
+        }
+        Insert: {
+          criado_em?: string
+          user_id: string
+        }
+        Update: {
+          criado_em?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       produto_imagens: {
         Row: {
           chave_storage: string
@@ -142,7 +157,7 @@ export type Database = {
           id?: string
           loja_id: string
           nome: string
-          numero: number
+          numero?: number
           preco_original: number
           preco_promocional?: number | null
           tamanhos?: Json
@@ -178,7 +193,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      usuario_id_por_email: { Args: { p_email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

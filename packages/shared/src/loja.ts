@@ -1,7 +1,18 @@
 import { z } from 'zod';
 
-/** Slugs que colidem com rotas do app web. */
-export const SLUGS_RESERVADOS = ['admin', 'api', 'p', 'login', 'auth', '_next'] as const;
+/** Slugs que colidem com rotas do app web. Manter igual à constraint `lojas_slug_reservado`. */
+export const SLUGS_RESERVADOS = [
+  'admin',
+  'api',
+  'p',
+  'login',
+  'auth',
+  '_next',
+  'painel',
+  'plataforma',
+  'entrar',
+  'sair',
+] as const;
 
 export const slugSchema = z
   .string()
@@ -22,6 +33,16 @@ export const lojaEditarSchema = z.object({
 });
 
 export type LojaEditar = z.infer<typeof lojaEditarSchema>;
+
+/** Criação de loja pela administração da plataforma, já convidando o dono por e-mail. */
+export const lojaCriarSchema = z.object({
+  nome: z.string().trim().min(1).max(80),
+  slug: slugSchema,
+  telefone_pedidos: telefoneSchema,
+  email_dono: z.email().trim().toLowerCase(),
+});
+
+export type LojaCriar = z.infer<typeof lojaCriarSchema>;
 
 export type Loja = {
   id: string;
