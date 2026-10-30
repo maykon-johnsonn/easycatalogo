@@ -5,6 +5,11 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 1 concluída e pendências organizadas
+
+- **O que foi feito:** vitrine aprovada e branch `feat/vitrine` juntada na `main`. As pendências espalhadas pelo log foram reunidas no `direcao.md` (seção 11) em duas listas: "Antes de ter clientes reais" e "Melhorias pós-MVP".
+- **Por quê:** os pontos de revisão ficam para depois da validação do MVP, sem se perderem no histórico.
+
 ## 2026-10-30: Fase 1, Passo 3: vitrine pública
 
 - **O que foi feito (branch `feat/vitrine`):**
