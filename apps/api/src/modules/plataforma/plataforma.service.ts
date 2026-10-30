@@ -70,7 +70,7 @@ export async function obterOuConvidarUsuario(email: string): Promise<{ id: strin
   if (existente) return { id: existente, convidado: false };
 
   const convite = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${env.PUBLIC_WEB_URL}/entrar`,
+    redirectTo: `${env.PUBLIC_WEB_URL}/entrar?primeiro-acesso=1`,
   });
   if (convite.error) throw new HttpErro(502, `Não foi possível enviar o convite: ${convite.error.message}`);
   return { id: convite.data.user.id, convidado: true };

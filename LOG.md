@@ -5,6 +5,46 @@ Entradas mais recentes no topo. Formato e regras na seção 10 do [direcao.md](d
 
 ---
 
+## 2026-10-30: Fase 1, Passo 2: telas do painel do lojista e da administração geral
+
+- **O que foi feito (branch `feat/painel-web`):**
+  - **Login** (`/entrar`):
+    - senha ou link de acesso por e-mail;
+    - "esqueci minha senha";
+    - tela `/conta/senha` para definir ou trocar a senha;
+    - o convite de uma loja nova leva direto à tela de criar senha.
+  - **Entrada do painel** (`/painel`): leva direto à loja quando o usuário só tem uma. Admin sem loja vai para `/plataforma`.
+  - **Painel do lojista** (`/painel/{slug}`):
+    - lista de produtos em grade, com capa, `#número`, preço e promoção;
+    - busca por nome ou `#número` (espera o usuário parar de digitar), filtro por status (todos/ativos/pausados) e por categoria;
+    - botão para pausar ou ativar direto na lista.
+  - **Cadastro e edição de produto:**
+    - preço no formato brasileiro (59,90), com validação de promoção menor que o preço;
+    - categoria com sugestões das já usadas;
+    - tamanhos e cores como etiquetas, com atalhos (P, M, G… / Preto, Branco…);
+    - até 8 fotos com capa, reordenação por setas e remoção;
+    - exclusão com confirmação.
+  - **Configurações da loja:** nome, endereço da vitrine (com aviso de que o link antigo para de funcionar) e WhatsApp de pedidos.
+  - **Administração geral** (`/plataforma`):
+    - indicadores de lojas, produtos e usuários;
+    - tabela de lojas com produtos, última atividade e data de cadastro;
+    - busca e criação de loja com convite do dono;
+    - ativar e desativar loja;
+    - atalho para abrir o painel ou a vitrine de cada loja.
+  - Hook `useDados`: carrega da API e descarta respostas antigas. Uma busca lenta não sobrescreve uma mais recente.
+  - Página inicial simples com o botão "Acessar meu painel".
+  - `admin:promover` agora cria a conta com senha temporária quando o e-mail não existe, sem depender de envio de e-mail.
+- **Por quê:** a Fase 1 exige que tudo funcione pelo painel antes da IA e do bot.
+- **Decisões:**
+  - As áreas restritas são renderizadas no navegador: a sessão fica no localStorage e as chamadas vão à API com o token. A vitrine pública (próximo passo) será renderizada no servidor, por causa do SEO e do preview no WhatsApp.
+  - Visual com fonte Geist, neutros "stone" e cor da marca rosé (`marca-600 #9c3f5b`), pensado primeiro para o celular.
+- **Testes:** lint, typecheck e build de produção passando. Teste de integração da API (26 verificações) passando. Todas as páginas respondem 200 no `next dev`.
+- **Pendências:**
+  - O Next 16 mostra, só em desenvolvimento, o aviso "Could not validate instant navigation" nas áreas restritas. É esperado, porque o conteúdo depende da sessão no navegador, e não bloqueia o build. Revisitar se quisermos navegação instantânea nessas telas.
+  - Desligar o cadastro público no Supabase e configurar as URLs de redirecionamento do login.
+  - Criar a conta de administrador geral.
+  - Próximo passo: vitrine pública.
+
 ## 2026-10-30: Fase 1, Passo 1: API do painel do lojista e da administração geral
 
 - **O que foi feito:**
